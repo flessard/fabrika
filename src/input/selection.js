@@ -12,7 +12,7 @@ import { turnRight } from '../core/grid.js';
 import { onLayer } from '../data/buildings.js';
 import { game, ui } from '../state.js';
 import { emit } from '../core/events.js';
-import { BUILDINGS } from '../data/buildings.js';
+import { buildingName } from '../i18n/index.js';
 import { emptyBuilding, liftBuilding, placementProblem, placeBuilding, putBackBuilding, removeBuilding } from '../world/buildings.js';
 import { spawnPuff } from '../sim/particles.js';
 import { playSound } from '../audio/sounds.js';
@@ -174,7 +174,7 @@ export function placementProblems(spots) {
   const groups = new Map();
   for (const { part, problem } of spots) {
     if (!problem) continue;
-    const name = BUILDINGS[part.type].name;
+    const name = buildingName(part.type);
     const key = `${name}|${problem}`;
     if (!groups.has(key)) groups.set(key, { name, problem, count: 0 });
     groups.get(key).count++;

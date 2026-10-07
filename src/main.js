@@ -25,6 +25,8 @@ import { closeInfoPanel, initInfoPanel, updateInfoPanel } from './ui/infoPanel.j
 import { createPerfMeter } from './ui/perf.js';
 import { initSelectionMenu, updateSelectionMenu } from './ui/selectionMenu.js';
 import { buildToolbar, setTool } from './ui/toolbar.js';
+import { installCursors } from './ui/cursors.js';
+import { t } from './i18n/index.js';
 import { playSound } from './audio/sounds.js';
 import { updateAmbience } from './audio/ambience.js';
 
@@ -57,7 +59,7 @@ on('item:delivered', (at) => {
   updateGoalDisplay();
   if (checkGoalJustReached()) {
     playSound('goal');
-    showToast('Commande livrée !', 'Le tableau 2 arrive dans la prochaine version.');
+    showToast(t('toast.goal.title'), t('toast.goal.detail'));
   } else {
     playSound('deliver', at);
   }
@@ -67,6 +69,7 @@ on('press:hit', (at) => playSound('thump', at));
 
 // ---------- Démarrage ----------
 
+installCursors();
 initHud({ onNewMap: () => startNewMap(randomSeed()) });
 buildToolbar(canvas);
 initInfoPanel();

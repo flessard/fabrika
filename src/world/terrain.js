@@ -3,6 +3,7 @@
 import { MAP_W, MAP_H } from '../config.js';
 import { cellIndex, inBounds } from '../core/grid.js';
 import { createRng, createValueNoise } from '../core/random.js';
+import { t } from '../i18n/index.js';
 
 export const GROUND = { GRASS: 0, DARK_GRASS: 1, SAND: 2, WATER: 3, DEEP_WATER: 4 };
 export const DECO = { NONE: 0, TREE: 1, ROCK: 2, BUSH: 3, FLOWER: 4 };
@@ -17,9 +18,9 @@ export const isLand = (map, i) => map.ground[i] <= GROUND.SAND;
  * Les buissons et les fleurs ne gênent pas.
  */
 export function terrainProblem(map, i) {
-  if (!isLand(map, i)) return 'eau';
-  if (map.deco[i] === DECO.TREE) return 'arbre';
-  if (map.deco[i] === DECO.ROCK) return 'rocher';
+  if (!isLand(map, i)) return t('problem.water');
+  if (map.deco[i] === DECO.TREE) return t('problem.tree');
+  if (map.deco[i] === DECO.ROCK) return t('problem.rock');
   return null;
 }
 export const isBuildable = (map, i) => terrainProblem(map, i) === null;

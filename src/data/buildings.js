@@ -16,32 +16,34 @@
 // storage : nombre d'items que la machine garde en stock, à l'entrée et à la sortie.
 //           Quand la sortie est bloquée, la machine continue tant que son stock n'est pas plein.
 //
+// Les noms affichés sont dans les dictionnaires (src/i18n/) : 'building.<type>' et 'tool.<id>'.
+//
 // Pour ajouter une machine qui transforme des items, il suffit d'ajouter une
-// entrée de kind 'crafter' ici, puis son sprite dans render/sprites/machines.js.
+// entrée de kind 'crafter' ici, son nom dans src/i18n/, puis son sprite dans render/sprites/machines.js.
 // Sa fiche (clic avec l'outil Déplacer) apparaît automatiquement.
 
 export const BUILDINGS = {
-  belt:     { name: 'Tapis',    kind: 'belt',     w: 1, h: 1 },
+  belt:     { kind: 'belt',     w: 1, h: 1 },
   // Tunnel : l'entrée fait descendre les items au sous-sol, la sortie les fait remonter.
   // Chacune occupe sa case en surface et la case du sous-sol en dessous. Entre les deux,
   // des tapis souterrains, qui passent sous tout mais ne se croisent jamais entre eux.
-  underBelt: { name: 'Tapis souterrain', kind: 'belt', w: 1, h: 1, layers: ['under'] },
-  tunnelIn:  { name: 'Entrée de tunnel', kind: 'belt', w: 1, h: 1, tunnel: 'in',
+  underBelt: { kind: 'belt', w: 1, h: 1, layers: ['under'] },
+  tunnelIn:  { kind: 'belt', w: 1, h: 1, tunnel: 'in',
                layers: ['surface', 'under'], inputLayer: 'surface', outputLayer: 'under' },
-  tunnelOut: { name: 'Sortie de tunnel', kind: 'belt', w: 1, h: 1, tunnel: 'out',
+  tunnelOut: { kind: 'belt', w: 1, h: 1, tunnel: 'out',
                layers: ['surface', 'under'], inputLayer: 'under', outputLayer: 'surface' },
-  splitter: { name: 'Splitter', kind: 'splitter', w: 1, h: 1 },
+  splitter: { kind: 'splitter', w: 1, h: 1 },
   // Même famille que le splitter, mais remplit ses sorties par ordre de priorité.
-  smartSplitter: { name: 'Splitter prioritaire', kind: 'splitter', w: 1, h: 1, priority: true },
+  smartSplitter: { kind: 'splitter', w: 1, h: 1, priority: true },
   // Même famille encore, mais chaque sortie a sa liste d'items (réglée dans sa fiche).
-  filter:   { name: 'Filtre',   kind: 'splitter', w: 1, h: 1, filter: true },
-  merger:   { name: 'Groupeur', kind: 'merger',   w: 1, h: 1 },
-  drill:    { name: 'Foreuse',  kind: 'drill',    w: 2, h: 2, time: 1.6, storage: { output: 10 } },
-  furnace:  { name: 'Four',     kind: 'crafter',  w: 2, h: 2, time: 1.3, storage: { input: 10, output: 10 },
+  filter:   { kind: 'splitter', w: 1, h: 1, filter: true },
+  merger:   { kind: 'merger',   w: 1, h: 1 },
+  drill:    { kind: 'drill',    w: 2, h: 2, time: 1.6, storage: { output: 10 } },
+  furnace:  { kind: 'crafter',  w: 2, h: 2, time: 1.3, storage: { input: 10, output: 10 },
               recipes: { fe_ore: 'fe_ingot', cu_ore: 'cu_ingot' } },
-  press:    { name: 'Presse',   kind: 'crafter',  w: 2, h: 2, time: 1.1, storage: { input: 10, output: 10 },
+  press:    { kind: 'crafter',  w: 2, h: 2, time: 1.1, storage: { input: 10, output: 10 },
               recipes: { fe_ingot: 'fe_plate', cu_ingot: 'cu_wire' } },
-  hub:      { name: 'Dépôt',    kind: 'hub',      w: 3, h: 3 },
+  hub:      { kind: 'hub',      w: 3, h: 3 },
 };
 
 /** Ce que posent les outils au sous-sol, à la place de leur bâtiment de surface. */
@@ -51,10 +53,8 @@ export const UNDER_VARIANT = {
 
 // Variantes souterraines des splitters et du groupeur : même comportement, posées au
 // sous-sol. `base` : le bâtiment de surface dont elles sont la copie (formes, outil).
-for (const [type, name] of [
-  ['splitter', 'Splitter souterrain'], ['smartSplitter', 'Prioritaire souterrain'], ['filter', 'Filtre souterrain'], ['merger', 'Groupeur souterrain'],
-]) {
-  BUILDINGS[UNDER_VARIANT[type]] = { ...BUILDINGS[type], name, base: type, layers: ['under'] };
+for (const type of ['splitter', 'smartSplitter', 'filter', 'merger']) {
+  BUILDINGS[UNDER_VARIANT[type]] = { ...BUILDINGS[type], base: type, layers: ['under'] };
 }
 BUILDINGS.underBelt.base = 'belt';
 
@@ -85,18 +85,18 @@ export const hasInfoPanel = (b) => b.kind !== 'hub';
  * `under` : l'outil sert aussi au sous-sol (les autres ne servent qu'en surface).
  */
 export const TOOLS = [
-  { id: 'hand', name: 'Déplacer', under: true },
-  { id: 'belt', name: 'Tapis', under: true },
-  { id: 'tunnel', name: 'Tunnel', key: 'T', under: true },
-  { id: 'splitter', name: 'Splitter', under: true },
-  { id: 'smartSplitter', name: 'Prioritaire', under: true },
-  { id: 'filter', name: 'Filtre', key: 'I', under: true },
-  { id: 'merger', name: 'Groupeur', under: true },
-  { id: 'drill', name: 'Foreuse' },
-  { id: 'furnace', name: 'Four' },
-  { id: 'press', name: 'Presse' },
-  { id: 'erase', name: 'Gomme', separatorBefore: true, under: true },
-  { id: 'select', name: 'Sélection', under: true },
+  { id: 'hand', under: true },
+  { id: 'belt', under: true },
+  { id: 'tunnel', key: 'T', under: true },
+  { id: 'splitter', under: true },
+  { id: 'smartSplitter', under: true },
+  { id: 'filter', key: 'I', under: true },
+  { id: 'merger', under: true },
+  { id: 'drill' },
+  { id: 'furnace' },
+  { id: 'press' },
+  { id: 'erase', separatorBefore: true, under: true },
+  { id: 'select', under: true },
 ];
 
 /** Vrai si l'outil pose un bâtiment (et n'est pas Déplacer, Gomme ou Sélection). */

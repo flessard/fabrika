@@ -1,5 +1,6 @@
 // Petit compteur sous la mini-carte : rendu utilisé, images par seconde,
 // et temps passé à dessiner chaque image (moyenne sur une demi-seconde).
+import { decimal, t } from '../i18n/index.js';
 
 export function createPerfMeter(rendererName) {
   const el = document.getElementById('perf');
@@ -12,8 +13,7 @@ export function createPerfMeter(rendererName) {
       renderMs += ms;
       if (seconds < 0.5) return;
       const fps = Math.round(frames / seconds);
-      const avg = (renderMs / frames).toFixed(1).replace('.', ',');
-      el.textContent = `${rendererName} · ${fps} i/s · ${avg} ms · ${buildingCount} bât.`;
+      el.textContent = t('perf', { renderer: rendererName, fps, ms: decimal(renderMs / frames), count: buildingCount });
       frames = 0; seconds = 0; renderMs = 0;
     },
   };

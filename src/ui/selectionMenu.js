@@ -3,6 +3,8 @@ import { TILE } from '../config.js';
 import { ui, view } from '../state.js';
 import { buildingAt } from '../world/buildings.js';
 import { clearSelection, eraseSelection, startCopy, startMove } from '../input/selection.js';
+import { on } from '../core/events.js';
+import { tn } from '../i18n/index.js';
 
 const GAP = 8;
 const menu = document.getElementById('selMenu');
@@ -16,6 +18,7 @@ export function initSelectionMenu() {
     else if (action === 'erase') eraseSelection();
     else if (action === 'close') clearSelection();
   });
+  on('lang:changed', () => { shownCount = -1; }); // le compte sera réécrit dans la nouvelle langue
 }
 
 /** À appeler à chaque image : montre le menu tant qu'il y a une sélection. */
@@ -31,7 +34,7 @@ export function updateSelectionMenu() {
   }
   if (group.length !== shownCount) {
     shownCount = group.length;
-    menu.querySelector('.sm-count').textContent = `${group.length} élément${group.length > 1 ? 's' : ''}`;
+    menu.querySelector('.sm-count').textContent = tn('selection.count', group.length);
   }
   menu.hidden = false;
   place(group);

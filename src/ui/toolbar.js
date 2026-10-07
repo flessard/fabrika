@@ -8,6 +8,8 @@ import { currentCtx, makeCanvas, rect } from '../render/pen.js';
 import { drawBelt, drawFilter, drawMerger, drawSmartSplitter, drawSplitter, drawTunnel, drawUnderBelt } from '../render/sprites/belts.js';
 import { machineSprite } from '../render/sprites/machines.js';
 import { cancelPlacing, clearSelection, rotatePlacing } from '../input/selection.js';
+import { on } from '../core/events.js';
+import { toolName } from '../i18n/index.js';
 
 let gameCanvas = null;
 
@@ -90,6 +92,8 @@ function toolButton({ id, label, key, onClick }) {
   const kbd = document.createElement('kbd');
   kbd.textContent = key;
   const name = document.createElement('span');
+  name.className = 'tool-name';
+  name.dataset.toolName = id;
   name.textContent = label;
   button.append(kbd, iconFor(id), name);
   button.addEventListener('click', onClick);
@@ -105,19 +109,23 @@ export function buildToolbar(canvas) {
   NUMBERED.forEach((tool, i) => { tool.number = (i + 1) % 10; });
   for (const tool of TOOLS) {
     if (tool.separatorBefore) bar.append(separator());
-    const button = toolButton({ id: tool.id, label: tool.name, key: tool.key ?? tool.number, onClick: () => setTool(tool.id) });
+    const button = toolButton({ id: tool.id, label: toolName(tool.id), key: tool.key ?? tool.number, onClick: () => setTool(tool.id) });
     button.dataset.tool = tool.id;
     bar.append(button);
   }
 
   bar.append(separator());
-  bar.append(toolButton({ id: 'rotate', label: 'Tourner', key: 'R', onClick: () => {
+  bar.append(toolButton({ id: 'rotate', label: toolName('rotate'), key: 'R', onClick: () => {
     if (ui.placing) rotatePlacing();
     else ui.dir = turnRight(ui.dir);
   } }));
-  const layerButton = toolButton({ id: 'layer', label: 'Sous-sol', key: 'U', onClick: toggleLayer });
+  const layerButton = toolButton({ id: 'layer', label: toolName('layer'), key: 'U', onClick: toggleLayer });
   layerButton.setAttribute('aria-pressed', 'false');
   bar.append(layerButton);
+
+  on('lang:changed', () => {
+    for (const span of bar.querySelectorAll('[data-tool-name]')) span.textContent = toolName(span.dataset.toolName);
+  });
 }
 
 /**

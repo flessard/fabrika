@@ -3,10 +3,10 @@
 import { turnLeft, turnRight } from '../core/grid.js';
 
 export const SPLITTER_SHAPES = [
-  { id: 'T',  name: 'T',        outputs: (dir) => [turnLeft(dir), turnRight(dir)] },
-  { id: 'YR', name: 'Y droite', outputs: (dir) => [dir, turnRight(dir)] },
-  { id: 'YL', name: 'Y gauche', outputs: (dir) => [dir, turnLeft(dir)] },
-  { id: '+',  name: 'Croix',    outputs: (dir) => [turnLeft(dir), dir, turnRight(dir)] },
+  { id: 'T',  outputs: (dir) => [turnLeft(dir), turnRight(dir)] },
+  { id: 'YR', outputs: (dir) => [dir, turnRight(dir)] },
+  { id: 'YL', outputs: (dir) => [dir, turnLeft(dir)] },
+  { id: '+',  outputs: (dir) => [turnLeft(dir), dir, turnRight(dir)] },
 ];
 
 export const shapeById = (id) => SPLITTER_SHAPES.find((s) => s.id === id) ?? SPLITTER_SHAPES[0];

@@ -3,7 +3,7 @@
 // est impossible, la raison (en rouge) : eau, arbre, case déjà occupée…
 import { on } from '../core/events.js';
 import { BUILDINGS, isBuildTool, outputCapacity } from '../data/buildings.js';
-import { ITEMS } from '../data/items.js';
+import { buildingName, decimal, itemName, t, tn, toolName } from '../i18n/index.js';
 import { ui } from '../state.js';
 import { anchorFor, buildingAt, placementProblem } from '../world/buildings.js';
 import { hasShapes, shapeChoice, shapeName } from '../input/shapePicker.js';
@@ -39,7 +39,7 @@ function hintText() {
   if (ui.beltPlan) return beltPlanHint(ui.beltPlan);
   const problem = buildProblemHint();
   if (problem) return problem;
-  if (ui.tool === 'select' && !ui.selection.length) return 'Glisse pour encadrer des bâtiments à déplacer, copier ou effacer';
+  if (ui.tool === 'select' && !ui.selection.length) return t('hint.select');
   if (ui.tool === 'tunnel') return tunnelHint();
   if (ui.layer === 'under') return undergroundHint();
   if (!ui.hover) return '';
@@ -48,38 +48,36 @@ function hintText() {
   return '';
 }
 
-/** Ex. « Four · 1,3 s par item · Minerai de fer → Lingot de fer · 62 % » */
+/** Ex. « Four · 1,3 s par item · Minerai de fer → Lingot de fer · 62 % » (selon la langue). */
 function machineHint(b) {
   const def = b && BUILDINGS[b.type];
   if (!def?.time) return '';
 
-  const seconds = def.time.toFixed(1).replace('.', ',');
   const makes = b.kind === 'drill'
-    ? ITEMS[b.ore].name
-    : Object.entries(def.recipes).map(([from, to]) => `${ITEMS[from].name} → ${ITEMS[to].name}`).join(' · ');
+    ? itemName(b.ore)
+    : Object.entries(def.recipes).map(([from, to]) => `${itemName(from)} → ${itemName(to)}`).join(' · ');
 
   const busy = b.kind === 'drill' ? b.working : !!b.current;
-  let state = 'en attente';
+  let state = t('hint.machine.waiting');
   if (busy) state = `${Math.floor(b.progress * 100)} %`;
-  else if (b.outputs.length >= outputCapacity(b)) state = 'sortie bloquée';
+  else if (b.outputs.length >= outputCapacity(b)) state = t('hint.machine.blocked');
 
-  return `<b>${def.name}</b> · ${seconds} s par item · ${makes} · ${state}`;
+  return t('hint.machine', { name: buildingName(b.type), s: decimal(def.time), makes, state });
 }
 
 function placingHint({ mode, parts }) {
-  const what = `${parts.length} élément${parts.length > 1 ? 's' : ''}`;
-  const keys = `<b>R</b> tourner · <b>Échap</b> ${mode === 'move' ? 'annuler' : 'terminer'}`;
+  const what = tn('selection.count', parts.length);
+  const keys = t(`hint.place.keys.${mode}`);
   const problems = ui.hover ? placementProblems(placementAt(ui.hover).spots) : [];
-  if (problems.length) return warning(`Impossible de poser ici : ${problemList(problems)} · ${keys}`);
-  const verb = mode === 'move' ? `<b>Déplacer</b> ${what} · clic pour poser` : `<b>Copier</b> ${what} · clic pour poser une copie`;
-  return `${verb} · ${keys}`;
+  if (problems.length) return warning(`${t('hint.cannotPlaceHere', { problems: problemList(problems) })} · ${keys}`);
+  return `${t(`hint.place.${mode}`, { what })} · ${keys}`;
 }
 
 /** Ex. « Foreuse : pas de gisement dessous ×2 · Tapis : eau » (les 3 raisons les plus fréquentes). */
 function problemList(problems) {
   const shown = problems.slice(0, 3).map(({ name, problem, count }) =>
-    `<b>${name}</b> : ${problem}${count > 1 ? ` ×${count}` : ''}`);
-  if (problems.length > 3) shown.push(`et ${problems.length - 3} autre${problems.length > 4 ? 's' : ''}`);
+    t('hint.problem', { name, problem }) + (count > 1 ? ` ×${count}` : ''));
+  if (problems.length > 3) shown.push(tn('hint.more', problems.length - 3));
   return shown.join(' · ');
 }
 
@@ -88,8 +86,8 @@ function beltPlanHint({ type, cells }) {
   const spots = cells.map(({ x, y }) => ({ part: { type }, problem: placementProblem(type, x, y) }));
   const problems = placementProblems(spots);
   const blocked = spots.filter((s) => s.problem).length;
-  if (!problems.length) return `<b>${cells.length}</b> tapis · relâche pour poser · <b>Échap</b> annuler`;
-  return warning(`${blocked} case${blocked > 1 ? 's' : ''} sans tapis : ${problemList(problems)} · relâche pour poser le reste · <b>Échap</b> annuler`);
+  if (!problems.length) return t('hint.belts', { n: cells.length });
+  return warning(tn('hint.belts.blocked', blocked, { problems: problemList(problems) }));
 }
 
 /** Bâtiment seul sous le curseur (pas un splitter ni un groupeur) qui ne peut pas être posé. */
@@ -99,34 +97,27 @@ function buildProblemHint() {
   if (!type) return null; // l'outil ne sert pas ici : la bulle du sous-sol le dit déjà
   const { x, y } = anchorFor(type, ui.hover);
   const problem = placementProblem(type, x, y);
-  return problem && warning(`Impossible de poser ${BUILDINGS[type].name.toLowerCase()} ici : ${problem}`);
+  return problem && warning(t('hint.cannotPlace', { name: buildingName(type).toLowerCase(), problem }));
 }
 
 function tunnelHint() {
-  const end = ui.tunnelEnd === 'in'
-    ? '<b>Entrée</b> : les items descendent au sous-sol'
-    : '<b>Sortie</b> : les items remontent en surface';
-  return `Tunnel · ${end} · <b>F</b> entrée / sortie · <b>R</b> tourner · <b>U</b> ${ui.layer === 'under' ? 'remonter' : 'voir le sous-sol'}`;
+  return t('hint.tunnel', {
+    end: t(ui.tunnelEnd === 'in' ? 'hint.tunnel.in' : 'hint.tunnel.out'),
+    u: t(ui.layer === 'under' ? 'hint.goUp' : 'hint.goDown'),
+  });
 }
 
 function undergroundHint() {
-  if (ui.tool === 'belt') {
-    return '<b>Tapis souterrain</b> · passe sous les machines et les tapis, mais jamais par-dessus un autre tapis souterrain · <b>U</b> remonter';
-  }
-  if (hasShapes(ui.tool) && ui.hover) return shapeHint(ui.tool, shapeChoice(ui.tool, ui.hover)) + ' · sous-sol';
-  return '<b>Sous-sol</b> · tapis, splitters, groupeurs et tunnels seulement · <b>U</b> remonter';
+  if (ui.tool === 'belt') return t('hint.under.belt');
+  if (hasShapes(ui.tool) && ui.hover) return t('hint.under.shape', { hint: shapeHint(ui.tool, shapeChoice(ui.tool, ui.hover)) });
+  return t('hint.under');
 }
 
-const TOOL_NAMES = { splitter: 'Splitter', smartSplitter: 'Prioritaire', filter: 'Filtre', merger: 'Groupeur' };
-
 function shapeHint(toolId, choice) {
-  let label = `${TOOL_NAMES[toolId]} <b>${shapeName(toolId, choice.shape)}</b>`;
-  if (toolId === 'smartSplitter') label += ' · <b>P</b> priorités';
-  if (toolId === 'filter') label += ' · items de chaque sortie dans sa fiche';
-  if (!choice.onBelt) {
-    return `${label} · <b>F</b> forme · <b>R</b> tourner · pose-le sur un tapis pour des suggestions`;
-  }
-  if (!choice.ok) return 'Aucune forme ne rentre ici : la sortie est bloquée';
-  const count = choice.options.length;
-  return `${label} · forme ${choice.index + 1}/${count} possible${count > 1 ? 's' : ''} ici · <b>R</b> pour changer`;
+  let label = t('hint.shape', { tool: toolName(toolId), shape: shapeName(toolId, choice.shape) });
+  if (toolId === 'smartSplitter') label += t('hint.shape.priorities');
+  if (toolId === 'filter') label += t('hint.shape.filter');
+  if (!choice.onBelt) return t('hint.shape.free', { label });
+  if (!choice.ok) return t('hint.shape.none');
+  return tn('hint.shape.options', choice.options.length, { label, i: choice.index + 1 });
 }

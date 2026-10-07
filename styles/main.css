@@ -31,6 +31,8 @@ body {
   font-family: var(--ui);
   -webkit-user-select: none;
   user-select: none;
+  /* Curseurs en pixel art, créés par src/ui/cursors.js (sinon ceux du système). */
+  cursor: var(--cursor-arrow, default);
 }
 
 /* ---------- Carte ---------- */
@@ -42,10 +44,10 @@ body {
   display: block;
   image-rendering: pixelated;
   touch-action: none;
-  cursor: grab;
+  cursor: var(--cursor-grab, grab);
 }
-#game.build { cursor: crosshair; }
-#game.drag { cursor: grabbing; }
+#game.build { cursor: var(--cursor-crosshair, crosshair); }
+#game.drag { cursor: var(--cursor-grabbing, grabbing); }
 
 /* ---------- Panneaux ---------- */
 
@@ -63,7 +65,7 @@ button {
   box-shadow: inset 0 -2px 0 var(--void);
   padding: 4px 8px;
   font-size: 12px;
-  cursor: pointer;
+  cursor: var(--cursor-pointer, pointer);
 }
 button:hover { background: var(--line); }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -91,6 +93,16 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 #goalNum { font-size: 14px; font-variant-numeric: tabular-nums; color: var(--accent); }
 
 .meta-buttons { display: flex; gap: 4px; }
+.lang select {
+  font-family: var(--ui);
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--panel-hi);
+  border: 2px solid var(--void);
+  padding: 2px 4px;
+  cursor: var(--cursor-pointer, pointer);
+}
+.lang select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--mute); }
 .help { font-size: 11px; color: var(--mute); line-height: 1.5; border-top: 2px solid var(--panel-hi); padding-top: 6px; }
 .help kbd { font-family: var(--ui); color: var(--ink); background: var(--void); padding: 0 4px; }
@@ -105,7 +117,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   display: grid;
   gap: 4px;
 }
-#mini { width: 128px; height: 96px; image-rendering: pixelated; display: block; cursor: pointer; }
+#mini { width: 128px; height: 96px; image-rendering: pixelated; display: block; cursor: var(--cursor-pointer, pointer); }
 #perf { font-size: 10px; color: var(--mute); text-align: center; font-variant-numeric: tabular-nums; max-width: 128px; }
 #coords { font-size: 11px; color: var(--mute); text-align: center; font-variant-numeric: tabular-nums; }
 

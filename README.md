@@ -64,6 +64,7 @@ assets/                 fichiers d'art et de son (voir assets/README.md)
 src/
   main.js               point d'entrée : branche les modules et lance la boucle de jeu
   config.js             tous les réglages (taille de carte, vitesses, zoom…)
+  i18n/                 langues : t('clé'), dictionnaires fr.js et en.js
   state.js              l'état partagé : game (la partie), view (caméra), ui (sélection)
 
   core/                 outils de base, sans rien de propre au jeu
@@ -115,7 +116,21 @@ src/
     hint.js             bulle d'aide
     selectionMenu.js    menu au-dessus de la sélection (déplacer, copier, effacer)
     perf.js             compteur d'images par seconde
+    cursors.js          curseurs de souris en pixel art
 ```
+
+### Langues
+
+Le jeu est en français et en anglais ; on choisit dans le menu « Langue » du HUD, et le
+choix est retenu. Au premier lancement, c'est la langue du navigateur (français, sinon anglais).
+
+Tous les textes affichés passent par `t('clé', { paramètres })` (`src/i18n/index.js`).
+Les dictionnaires sont `src/i18n/fr.js` (la référence) et `src/i18n/en.js` ; une clé absente
+d'une langue retombe sur le français. Les données (`data/`) n'ont que des identifiants : les noms
+viennent des clés `building.<type>`, `item.<id>`, `tool.<id>`, `shape.<id>`. Dans la page, les
+éléments marqués `data-i18n` (ou `-html`, `-title`, `-aria`) sont remplis tout seuls.
+
+Ajouter une langue : copier `fr.js`, le traduire, l'ajouter à `LANGS` dans `src/i18n/index.js`.
 
 ### Surface et sous-sol
 
@@ -137,9 +152,10 @@ version de surface (`base`).
 
 ### Ajouter une machine qui transforme des items
 
-1. Ajouter ses items dans `src/data/items.js`.
-2. Ajouter la machine dans `src/data/buildings.js` avec `kind: 'crafter'`, un temps et ses recettes.
-3. Ajouter son outil dans `TOOLS` (même fichier).
+1. Ajouter ses items dans `src/data/items.js`, et leurs noms dans `src/i18n/` (`item.<id>`, `item.<id>.plural`).
+2. Ajouter la machine dans `src/data/buildings.js` avec `kind: 'crafter'`, un temps et ses recettes,
+   et son nom dans `src/i18n/` (`building.<type>`).
+3. Ajouter son outil dans `TOOLS` (même fichier), et son nom (`tool.<id>`).
 4. Dessiner son sprite dans `src/render/sprites/machines.js` (`STATIC_SPRITES`, et si elle bouge,
    `animationState` pour décrire son image d'animation et `ANIMATE` pour la dessiner).
 

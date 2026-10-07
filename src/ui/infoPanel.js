@@ -5,11 +5,13 @@
 // de sections (titre + contenu), et l'affichage ne fait que les dessiner.
 // Une nouvelle machine de kind 'crafter' (data/buildings.js) a donc sa fiche sans rien ajouter.
 import { BELT_SPEED, TILE } from '../config.js';
-import { RIGHT, LEFT, opposite, turnLeft, turnRight } from '../core/grid.js';
+import { RIGHT, LEFT, turnLeft, turnRight } from '../core/grid.js';
 import { BUILDINGS, inputCapacity, isUnderground, outputCapacity } from '../data/buildings.js';
 import { ITEMS } from '../data/items.js';
-import { filterFor, priorityOrder, raisePriority, shapeById, splitterOutputs, toggleFilter } from '../data/splitterShapes.js';
-import { mergerInputs, mergerShapeById } from '../data/mergerShapes.js';
+import { filterFor, priorityOrder, raisePriority, splitterOutputs, toggleFilter } from '../data/splitterShapes.js';
+import { mergerInputs } from '../data/mergerShapes.js';
+import { on } from '../core/events.js';
+import { buildingName, decimal, itemName, shapeLabel, t } from '../i18n/index.js';
 import { isConveyor } from '../sim/transfer.js';
 import { game, ui, view } from '../state.js';
 import { flowSummary } from '../sim/flow.js';
@@ -51,15 +53,17 @@ export function initInfoPanel() {
     else tooltip.hidden = true;
   });
   panel.addEventListener('pointerleave', () => { tooltip.hidden = true; });
+  // Nouvelle langue : la fiche ouverte est reconstruite (bouton de fermeture compris).
+  on('lang:changed', () => { shownFor = null; });
 }
 
 const tooltip = Object.assign(document.createElement('div'), { id: 'chipTooltip', className: 'panel', hidden: true });
 document.body.append(tooltip);
 
 /** Familles d'items, d'après leur forme (voir data/items.js). */
-const FAMILY = { ore: 'Minerai', ingot: 'Lingot', plate: 'Produit', wire: 'Produit' };
+const FAMILY = { ore: 'family.ore', ingot: 'family.ingot', plate: 'family.product', wire: 'family.product' };
 /** « l'envoyer à gauche », « tout droit », « à droite ». */
-const toward = (dir, side) => ({ 'Tout droit': 'tout droit', Gauche: 'à gauche', Droite: 'à droite' })[sideName(dir, side)];
+const toward = (dir, side) => t(`toward.${sideKey(dir, side)}`);
 
 /** Nom de l'item, sa famille, et ce que fera le clic, au-dessus de l'icône survolée. */
 function showChipTooltip(chip) {
@@ -67,9 +71,9 @@ function showChipTooltip(chip) {
   if (!b?.filters) return;
   const type = chip.dataset.item, side = Number(chip.dataset.filterSide);
   const chosen = filterFor(b.filters, b.dir, side).includes(type);
-  const item = ITEMS[type];
-  tooltip.innerHTML = `<b>${item.name}</b> <span class="ip-muted">· ${FAMILY[item.shape] ?? 'Item'}</span><br>`
-    + `<small>clic : ${chosen ? 'ne plus l\'envoyer' : 'l\'envoyer'} ${toward(b.dir, side)}</small>`;
+  const family = FAMILY[ITEMS[type].shape];
+  tooltip.innerHTML = `<b>${itemName(type)}</b>${family ? ` <span class="ip-muted">· ${t(family)}</span>` : ''}<br>`
+    + `<small>${t(chosen ? 'panel.filter.stop' : 'panel.filter.send', { toward: toward(b.dir, side) })}</small>`;
   tooltip.hidden = false;
   const r = chip.getBoundingClientRect();
   const w = tooltip.offsetWidth, h = tooltip.offsetHeight;
@@ -113,75 +117,75 @@ function describeMachine(b) {
   const def = BUILDINGS[b.type];
   const outFull = b.outputs.length >= outputCapacity(b);
 
-  let status = { label: 'En attente de matière', tone: 'idle' };
-  if (b.kind === 'drill') status = b.working ? { label: 'En marche', tone: 'ok' } : { label: 'Sortie pleine', tone: 'warn' };
-  else if (b.current) status = { label: 'En marche', tone: 'ok' };
-  else if (outFull) status = { label: 'Sortie pleine', tone: 'warn' };
+  let status = { label: t('panel.status.waiting'), tone: 'idle' };
+  if (b.kind === 'drill') status = b.working ? { label: t('panel.status.running'), tone: 'ok' } : { label: t('panel.status.outputFull'), tone: 'warn' };
+  else if (b.current) status = { label: t('panel.status.running'), tone: 'ok' };
+  else if (outFull) status = { label: t('panel.status.outputFull'), tone: 'warn' };
 
   const busy = b.kind === 'drill' ? b.working : !!b.current;
   const recipes = b.kind === 'drill' ? [[null, b.ore]] : Object.entries(def.recipes);
   const making = busy
     ? recipeHtml(b.kind === 'drill' ? null : b.currentInput, b.kind === 'drill' ? b.ore : b.current)
-    : `<span class="ip-muted">Recettes : </span>${recipes.map(([f, t]) => recipeHtml(f, t)).join('<span class="ip-sep">·</span>')}`;
+    : `<span class="ip-muted">${t('panel.recipes')}</span>${recipes.map(([from, to]) => recipeHtml(from, to)).join('<span class="ip-sep">·</span>')}`;
 
   const stocks = [];
-  if (inputCapacity(b)) stocks.push(stockHtml('Entrée', b.inputs, inputCapacity(b)));
-  if (outputCapacity(b)) stocks.push(stockHtml('Sortie', b.outputs, outputCapacity(b)));
+  if (inputCapacity(b)) stocks.push(stockHtml(t('panel.input'), b.inputs, inputCapacity(b)));
+  if (outputCapacity(b)) stocks.push(stockHtml(t('panel.output'), b.outputs, outputCapacity(b)));
 
   const { actual, max } = productionRate(b);
   return {
-    title: def.name,
+    title: buildingName(b.type),
     status,
     sections: [
-      { label: 'Fabrication', aside: `${decimal(def.time)} s par item`,
+      { label: t('panel.production'), aside: t('panel.perItem', { s: decimal(def.time) }),
         html: `<div class="ip-row">${making}</div>${bar(busy ? b.progress : 0)}` },
-      { label: 'Stock', html: stocks.join('') },
-      { label: 'Cadence', html: rateHtml(actual, max) },
+      { label: t('panel.stock'), html: stocks.join('') },
+      { label: t('panel.rate'), html: rateHtml(actual, max) },
     ],
   };
 }
 
 function describeConveyor(b) {
   const flow = flowSummary(b);
-  let status = { label: 'Vide', tone: 'idle' };
-  if (b.stalled) status = { label: 'Bloqué', tone: 'warn' };
-  else if (b.item) status = { label: 'En mouvement', tone: 'ok' };
+  let status = { label: t('panel.status.empty'), tone: 'idle' };
+  if (b.stalled) status = { label: t('panel.status.blocked'), tone: 'warn' };
+  else if (b.item) status = { label: t('panel.status.moving'), tone: 'ok' };
 
   const sections = [
-    { label: 'Dessus', html: `<div class="ip-row">${b.item ? `${icon(b.item.type)} ${ITEMS[b.item.type].name}` : '<span class="ip-muted">rien</span>'}</div>` },
-    { label: 'Débit', html: rateHtml(flow.perMinute, BELT_MAX_PER_MINUTE) + gauge((flow.perMinute ?? 0) / BELT_MAX_PER_MINUTE) },
+    { label: t('panel.carrying'), html: `<div class="ip-row">${b.item ? `${icon(b.item.type)} ${itemName(b.item.type)}` : `<span class="ip-muted">${t('panel.nothing')}</span>`}</div>` },
+    { label: t('panel.throughput'), html: rateHtml(flow.perMinute, BELT_MAX_PER_MINUTE) + gauge((flow.perMinute ?? 0) / BELT_MAX_PER_MINUTE) },
   ];
   if (flow.byItem.length > 1 || (flow.byItem.length === 1 && b.kind === 'belt')) {
-    sections.push({ label: 'Par item', html: `<div class="ip-row ip-wrap">${flow.byItem
-      .map((f) => `${icon(f.itemType)}<span>${perMinute(f.perMinute)} / min</span>`).join('<span class="ip-sep">·</span>')}</div>` });
+    sections.push({ label: t('panel.byItem'), html: `<div class="ip-row ip-wrap">${flow.byItem
+      .map((f) => `${icon(f.itemType)}<span>${rate(f.perMinute)}</span>`).join('<span class="ip-sep">·</span>')}</div>` });
   }
   if (b.priority) {
     // Splitter prioritaire : les sorties dans l'ordre, avec un bouton pour en faire monter une.
     const order = priorityOrder(b.dir, b.shape, b.priority);
-    sections.push({ label: 'Priorités', aside: 'la n° 1 se remplit d\'abord', html: order.map((side, rank) => `
+    sections.push({ label: t('panel.priorities'), aside: t('panel.priorities.aside'), html: order.map((side, rank) => `
       <div class="ip-prio">
         <b class="rank-${rank + 1}">${rank + 1}</b>
         <span>${sideName(b.dir, side)}</span>
-        <span class="ip-muted">${perMinute(flow.byOutput.get(side) ?? 0)} / min</span>
-        ${rank > 0 ? `<button type="button" data-raise="${side}" title="Monter en priorité ${rank}">▲</button>` : '<span></span>'}
+        <span class="ip-muted">${rate(flow.byOutput.get(side) ?? 0)}</span>
+        ${rank > 0 ? `<button type="button" data-raise="${side}" title="${t('panel.priorities.raise', { rank })}">▲</button>` : '<span></span>'}
       </div>`).join('') });
   } else if (b.filters) {
     // Filtre : une rangée par sortie, avec une icône par item à allumer ou éteindre.
     const sides = splitterOutputs(b.dir, b.shape);
-    sections.push({ label: 'Items par sortie', aside: 'sortie vide : le reste', html: sides.map((side) => {
+    sections.push({ label: t('panel.filter'), aside: t('panel.filter.aside'), html: sides.map((side) => {
       const chosen = filterFor(b.filters, b.dir, side);
       // Le nom de chaque item s'affiche au survol (voir showChipTooltip).
       const chips = Object.keys(ITEMS).map((type) => `
         <button type="button" class="ip-chip" data-filter-side="${side}" data-item="${type}"
-          aria-pressed="${chosen.includes(type)}" aria-label="${ITEMS[type].name}"><img class="ip-item" src="${itemIconUrl(type)}" alt=""></button>`).join('');
+          aria-pressed="${chosen.includes(type)}" aria-label="${itemName(type)}"><img class="ip-item" src="${itemIconUrl(type)}" alt=""></button>`).join('');
       const names = chosen.length
-        ? chosen.map((type) => ITEMS[type].name).join(' · ')
-        : '<span class="ip-muted">Tout ce qui n\'est pas choisi ailleurs</span>';
+        ? chosen.map((type) => itemName(type)).join(' · ')
+        : `<span class="ip-muted">${t('panel.filter.rest')}</span>`;
       return `
         <div class="ip-filter">
           <div class="ip-filter-head">
             <span>${sideName(b.dir, side)}</span>
-            <span class="ip-muted">${perMinute(flow.byOutput.get(side) ?? 0)} / min</span>
+            <span class="ip-muted">${rate(flow.byOutput.get(side) ?? 0)}</span>
           </div>
           <div class="ip-chips">${chips}</div>
           <div class="ip-chosen">${names}</div>
@@ -189,50 +193,53 @@ function describeConveyor(b) {
     }).join('') });
   } else if (b.kind === 'splitter') {
     const sides = splitterOutputs(b.dir, b.shape);
-    sections.push({ label: 'Par sortie', html: `<div class="ip-row ip-wrap">${sides
-      .map((side) => `<span class="ip-muted">${sideName(b.dir, side)}</span> <span>${perMinute(flow.byOutput.get(side) ?? 0)} / min</span>`)
+    sections.push({ label: t('panel.byOutput'), html: `<div class="ip-row ip-wrap">${sides
+      .map((side) => `<span class="ip-muted">${sideName(b.dir, side)}</span> <span>${rate(flow.byOutput.get(side) ?? 0)}</span>`)
       .join('<span class="ip-sep">·</span>')}</div>` });
   }
 
   if (b.kind === 'merger') {
     const sides = mergerInputs(b.dir, b.shape);
-    sections.push({ label: 'Par entrée', html: `<div class="ip-row ip-wrap">${sides
-      .map((side) => `<span class="ip-muted">${sideName(b.dir, side)}</span> <span>${perMinute(flow.byOutput.get(side) ?? 0)} / min</span>`)
+    sections.push({ label: t('panel.byInput'), html: `<div class="ip-row ip-wrap">${sides
+      .map((side) => `<span class="ip-muted">${sideName(b.dir, side)}</span> <span>${rate(flow.byOutput.get(side) ?? 0)}</span>`)
       .join('<span class="ip-sep">·</span>')}</div>` });
   }
 
   let subtitle = null;
-  if (b.kind === 'splitter') subtitle = `forme ${shapeById(b.shape).name}`;
-  if (b.kind === 'merger') subtitle = `${mergerShapeById(b.shape).name} · ${mergerInputs(b.dir, b.shape).length} entrées`;
+  if (b.kind === 'splitter') subtitle = t('panel.shape', { shape: shapeLabel(b.shape) });
+  if (b.kind === 'merger') subtitle = t('panel.mergerShape', { shape: shapeLabel(b.shape), n: mergerInputs(b.dir, b.shape).length });
   return {
-    title: BUILDINGS[b.type].name,
+    title: buildingName(b.type),
     subtitle,
     status,
     sections,
   };
 }
 
-/** Nom d'un côté par rapport au sens du flux (dir). */
-function sideName(dir, side) {
-  if (side === dir) return 'Tout droit';
-  if (side === turnLeft(dir)) return 'Gauche';
-  if (side === turnRight(dir)) return 'Droite';
-  if (side === opposite(dir)) return 'Arrière';
-  return '?';
+/** Un côté par rapport au sens du flux (dir) : 'straight', 'left', 'right' ou 'back'. */
+function sideKey(dir, side) {
+  if (side === dir) return 'straight';
+  if (side === turnLeft(dir)) return 'left';
+  if (side === turnRight(dir)) return 'right';
+  return 'back';
 }
+
+/** Nom d'un côté par rapport au sens du flux (dir) : « Tout droit », « Gauche »… */
+const sideName = (dir, side) => t(`side.${sideKey(dir, side)}`);
 
 // ---------- Petits morceaux de HTML ----------
 
-const decimal = (n) => n.toFixed(1).replace('.', ',');
 const perMinute = (n) => (n < 10 ? decimal(n) : String(Math.round(n)));
-const icon = (type) => `<img class="ip-item" src="${itemIconUrl(type)}" alt="${ITEMS[type].name}" title="${ITEMS[type].name}">`;
+/** « 12 / min » */
+const rate = (n) => t('panel.perMinute', { n: perMinute(n) });
+const icon = (type) => `<img class="ip-item" src="${itemIconUrl(type)}" alt="${itemName(type)}" title="${itemName(type)}">`;
 const recipeHtml = (from, to) => `${from ? `${icon(from)}<span class="ip-sep">→</span>` : ''}${icon(to)}`;
 const bar = (fraction) => `<div class="ip-bar"><i style="width:${Math.round(fraction * 100)}%"></i></div>`;
 const gauge = (fraction) => `<div class="ip-gauge"><i style="width:${Math.round(Math.min(1, fraction) * 100)}%"></i></div>`;
 
 function rateHtml(actual, max) {
-  const value = actual === null ? '<span class="ip-muted">mesure…</span>' : `${perMinute(actual)} / min`;
-  return `<div class="ip-rate"><b>${value}</b><span class="ip-muted">max ${perMinute(max)} / min</span></div>`;
+  const value = actual === null ? `<span class="ip-muted">${t('panel.measuring')}</span>` : rate(actual);
+  return `<div class="ip-rate"><b>${value}</b><span class="ip-muted">${t('panel.max', { n: perMinute(max) })}</span></div>`;
 }
 
 /** Une ligne de stock : les items regroupés par type, le compte et une jauge. */
@@ -241,7 +248,7 @@ function stockHtml(label, list, capacity) {
   for (const type of list) counts.set(type, (counts.get(type) ?? 0) + 1);
   const items = counts.size
     ? [...counts].map(([type, n]) => `${icon(type)}<span>×${n}</span>`).join('')
-    : '<span class="ip-muted">vide</span>';
+    : `<span class="ip-muted">${t('panel.empty')}</span>`;
   return `<div class="ip-stock">
     <span class="ip-muted">${label}</span>
     <span class="ip-row">${items}</span>
@@ -280,7 +287,7 @@ function build(b) {
     <div class="ip-head">
       <img class="ip-building" alt="">
       <div class="ip-title"><b></b><span class="ip-status"></span></div>
-      <button type="button" class="ip-close" aria-label="Fermer la fiche">×</button>
+      <button type="button" class="ip-close" aria-label="${t('panel.close')}">×</button>
     </div>
     <div class="ip-sections"></div>`;
   panel.querySelector('.ip-close').addEventListener('click', closeInfoPanel);

@@ -1,6 +1,7 @@
 // Poser, retrouver et enlever des bâtiments sur la grille.
 import { BUILDINGS, layersOf } from '../data/buildings.js';
 import { emptyFilters } from '../data/splitterShapes.js';
+import { buildingName, t } from '../i18n/index.js';
 import { DOWN, LEFT, RIGHT, cellIndex, inBounds } from '../core/grid.js';
 import { TILE } from '../config.js';
 import { game } from '../state.js';
@@ -34,18 +35,18 @@ export function placementProblem(type, x, y) {
   const layers = layersOf(type);
   let onOre = false;
   for (const [cx, cy] of footprint(x, y, w, h)) {
-    if (!inBounds(cx, cy)) return 'hors de la carte';
+    if (!inBounds(cx, cy)) return t('problem.offMap');
     const i = cellIndex(cx, cy);
     for (const layer of layers) {
       const other = gridOf(layer)[i];
-      if (other) return `${layer === 'under' ? 'sous-sol déjà occupé' : 'déjà occupé'} (${BUILDINGS[other.type].name})`;
+      if (other) return t(layer === 'under' ? 'problem.takenUnder' : 'problem.taken', { name: buildingName(other.type) });
     }
     const terrain = layers.includes('surface') && terrainProblem(game.map, i);
     if (terrain) return terrain;
     if (game.map.ore[i]) onOre = true;
   }
   // Une foreuse doit toucher au moins une case de gisement.
-  if (kind === 'drill' && !onOre) return 'pas de gisement dessous';
+  if (kind === 'drill' && !onOre) return t('problem.noOre');
   return null;
 }
 

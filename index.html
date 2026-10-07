@@ -14,7 +14,7 @@
 
   <!-- HUD : nom du jeu, objectif du tableau, carte, aide (voir src/ui/hud.js). -->
   <div id="hud" class="panel">
-    <div class="brand"><b>Fabrika</b><span>Tableau 1</span></div>
+    <div class="brand"><b>Fabrika</b><span id="boardLbl"></span></div>
     <div class="goal">
       <canvas id="goalIcon" width="7" height="7"></canvas>
       <div>
@@ -26,38 +26,39 @@
     <div class="meta">
       <span id="seedLbl">Carte</span>
       <span class="meta-buttons">
-        <button id="sound" type="button" title="Activer ou couper le son (M)">Son : oui</button>
-        <button id="reroll" type="button">Nouvelle carte</button>
+        <button id="sound" type="button"></button>
+        <button id="reroll" type="button" data-i18n="hud.newMap"></button>
       </span>
     </div>
-    <div class="help">
-      Glisse pour te déplacer · <kbd>WASD</kbd> / flèches · <kbd>+</kbd> <kbd>−</kbd> zoom<br>
-      <kbd>R</kbd> tourner · <kbd>F</kbd> forme · <kbd>P</kbd> priorités · <kbd>M</kbd> son · clic droit efface · glisse un tapis pour le tracer<br>
-      <kbd>0</kbd> Sélection (ou <kbd>Maj</kbd> + glisser) : encadre pour déplacer, copier, effacer<br>
-      <kbd>T</kbd> tunnel (<kbd>F</kbd> entrée / sortie) · <kbd>U</kbd> sous-sol : les tapis souterrains passent sous tout
-    </div>
+    <!-- Choix de la langue (voir src/i18n/). -->
+    <label class="meta lang">
+      <span data-i18n="hud.lang"></span>
+      <select id="lang"></select>
+    </label>
+    <!-- Les textes marqués data-i18n viennent des dictionnaires (src/i18n/). -->
+    <div class="help" data-i18n-html="hud.help"></div>
   </div>
 
   <!-- Mini-carte (voir src/render/minimap.js). -->
   <div id="miniWrap" class="panel">
     <canvas id="mini" width="128" height="96"></canvas>
-    <div id="coords">64 × 48 cases</div>
+    <div id="coords"></div>
     <div id="perf"></div>
   </div>
 
   <!-- Palette d'outils, remplie par src/ui/toolbar.js. -->
-  <div id="bar" class="panel" role="toolbar" aria-label="Outils"></div>
+  <div id="bar" class="panel" role="toolbar" data-i18n-aria="hud.toolbar"></div>
 
   <!-- Fiche du bâtiment cliqué (voir src/ui/infoPanel.js). -->
   <div id="infoPanel" class="panel" hidden></div>
 
   <!-- Menu des bâtiments sélectionnés (voir src/ui/selectionMenu.js). -->
-  <div id="selMenu" class="panel" role="toolbar" aria-label="Sélection" hidden>
+  <div id="selMenu" class="panel" role="toolbar" data-i18n-aria="selection.label" hidden>
     <span class="sm-count"></span>
-    <button type="button" data-action="move">Déplacer <kbd>X</kbd></button>
-    <button type="button" data-action="copy">Copier <kbd>C</kbd></button>
-    <button type="button" data-action="erase" class="sm-danger">Effacer <kbd>Suppr</kbd></button>
-    <button type="button" data-action="close" class="sm-close" title="Désélectionner (Échap)">×</button>
+    <button type="button" data-action="move"><span data-i18n="selection.move"></span> <kbd>X</kbd></button>
+    <button type="button" data-action="copy"><span data-i18n="selection.copy"></span> <kbd>C</kbd></button>
+    <button type="button" data-action="erase" class="sm-danger"><span data-i18n="selection.erase"></span> <kbd data-i18n="selection.deleteKey"></kbd></button>
+    <button type="button" data-action="close" class="sm-close" data-i18n-title="selection.close" data-i18n-aria="selection.close">×</button>
   </div>
 
   <div id="toast" class="panel" hidden></div>

@@ -4,10 +4,10 @@
 import { opposite, turnLeft, turnRight } from '../core/grid.js';
 
 export const MERGER_SHAPES = [
-  { id: 'T',  name: 'T',        inputs: (dir) => [turnLeft(dir), turnRight(dir)] },
-  { id: 'YR', name: 'Y droite', inputs: (dir) => [opposite(dir), turnRight(dir)] },
-  { id: 'YL', name: 'Y gauche', inputs: (dir) => [opposite(dir), turnLeft(dir)] },
-  { id: '+',  name: 'Croix',    inputs: (dir) => [turnLeft(dir), opposite(dir), turnRight(dir)] },
+  { id: 'T',  inputs: (dir) => [turnLeft(dir), turnRight(dir)] },
+  { id: 'YR', inputs: (dir) => [opposite(dir), turnRight(dir)] },
+  { id: 'YL', inputs: (dir) => [opposite(dir), turnLeft(dir)] },
+  { id: '+',  inputs: (dir) => [turnLeft(dir), opposite(dir), turnRight(dir)] },
 ];
 
 export const mergerShapeById = (id) => MERGER_SHAPES.find((s) => s.id === id) ?? MERGER_SHAPES[0];
