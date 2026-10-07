@@ -18,10 +18,12 @@ import { createPixiRenderer } from './render/pixiRenderer.js';
 import { rebuildMinimapBase, renderMinimap } from './render/minimap.js';
 import { centerOn, initCamera, resizeView, setResizeHandler } from './input/camera.js';
 import { applyKeyboardPan, initControls } from './input/controls.js';
+import { resetSelection } from './input/selection.js';
 import { initHud, showMapInfo, showToast, updateGoalDisplay } from './ui/hud.js';
 import { updateHint } from './ui/hint.js';
 import { closeInfoPanel, initInfoPanel, updateInfoPanel } from './ui/infoPanel.js';
 import { createPerfMeter } from './ui/perf.js';
+import { initSelectionMenu, updateSelectionMenu } from './ui/selectionMenu.js';
 import { buildToolbar, setTool } from './ui/toolbar.js';
 import { playSound } from './audio/sounds.js';
 import { updateAmbience } from './audio/ambience.js';
@@ -41,6 +43,7 @@ setResizeHandler(renderer.resize);
 
 on('map:new', () => {
   closeInfoPanel();
+  resetSelection();
   if (params.has('stress')) fillWithBeltLoops();
   renderer.rebuildTerrain();
   rebuildMinimapBase();
@@ -67,6 +70,7 @@ on('press:hit', (at) => playSound('thump', at));
 initHud({ onNewMap: () => startNewMap(randomSeed()) });
 buildToolbar(canvas);
 initInfoPanel();
+initSelectionMenu();
 initControls(canvas, minimapCanvas);
 addEventListener('resize', resizeView);
 
@@ -102,6 +106,7 @@ function frame(now) {
   if (frameCount++ % 4 === 0) renderMinimap(minimapCtx);
   updateHint();
   updateInfoPanel();
+  updateSelectionMenu();
   updateAmbience();
 
   requestAnimationFrame(frame);

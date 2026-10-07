@@ -15,10 +15,11 @@ import { beltArms } from '../sim/belt.js';
 import { isConveyor } from '../sim/transfer.js';
 import { makeCanvas } from './pen.js';
 import { bakeTerrain } from './terrainImage.js';
-import { cameraOrigin, carriedItemPosition, conveyorFrame, selectionOutline, cursorPreview, isVisible, visibleCells, waterSparkles } from './scene.js';
+import { cameraOrigin, carriedItemPosition, conveyorFrame, selectionOutline, selectionOverlay, cursorPreview, isVisible, visibleCells, waterSparkles } from './scene.js';
 import { beltFrame, drawBelt, drawMerger, drawMergerBase, drawMergerLid, drawSmartSplitter, drawSplitter } from './sprites/belts.js';
 import { ITEM_SIZE, itemSprite } from './sprites/items.js';
 import { animationState, drawMachineBody } from './sprites/machines.js';
+import { HIGHLIGHT_MARGIN, groupOutline, highlightFrame, selectionHighlight } from './sprites/highlight.js';
 
 /** Marge autour des textures de machines, pour l'ombre et la goulotte qui dépassent. */
 const MACHINE_MARGIN = 4;
@@ -54,12 +55,15 @@ export async function createPixiRenderer(canvas) {
   const machines = new SpritePool();
   const effects = new Graphics();        // barres de progression, fumée, étincelles
   const icons = new SpritePool();
-  const ghost = new Sprite();
+  const highlights = new SpritePool();   // bâtiments sélectionnés, teintés de cyan
+  const highlightOutline = new Sprite(); // contour du groupe sélectionné
+  let highlightOutlineKey = null;
+  const ghosts = new SpritePool();       // aperçus transparents sous le curseur
   const cursor = new Graphics();
 
   world.addChild(
     terrain, overlay, belts.layer, itemShadows.layer, items.layer, lids.layer,
-    machines.layer, effects, icons.layer, ghost, cursor,
+    machines.layer, effects, icons.layer, highlights.layer, highlightOutline, ghosts.layer, cursor,
   );
 
   const shadowTexture = textures.get('item-shadow', ITEM_SIZE, 6, (ctx) => {
@@ -143,36 +147,61 @@ export async function createPixiRenderer(canvas) {
 
   function drawCursor(preview, time) {
     cursor.clear();
-    ghost.visible = false;
+    ghosts.begin();
     const selected = selectionOutline();
     if (selected) strokeOutline(selected);
-    if (!preview) return;
 
-    const { ghost: g, outline } = preview;
-    if (g) {
-      if (g.kind === 'belt') setGhost(beltTexture(g.dir, g.arms, beltFrame(time)), g.x * TILE, g.y * TILE);
-      else if (g.kind === 'splitter' && g.priority) setGhost(smartSplitterTexture(g.dir, g.shape, g.priority, beltFrame(time)), g.x * TILE, g.y * TILE);
-      else if (g.kind === 'splitter') setGhost(splitterTexture(g.dir, g.shape, beltFrame(time)), g.x * TILE, g.y * TILE);
-      else if (g.kind === 'merger') setGhost(mergerGhostTexture(g.dir, g.shape, beltFrame(time)), g.x * TILE, g.y * TILE);
-      else {
-        const b = g.building;
-        setGhost(machineTexture(b, animationState(b, time), false), b.x * TILE - MACHINE_MARGIN, b.y * TILE - MACHINE_MARGIN);
-      }
+    const group = selectionOverlay(ui.hover, time);
+    highlights.begin();
+    const shine = highlightFrame(time), pulse = 0.8 + 0.2 * Math.sin(time * 5);
+    for (const b of group.highlighted) {
+      const { key, canvas } = selectionHighlight(b, shine);
+      const texture = textures.get(key, canvas.width, canvas.height, (ctx) => ctx.drawImage(canvas, 0, 0));
+      highlights.next(texture, b.x * TILE - HIGHLIGHT_MARGIN, b.y * TILE - HIGHLIGHT_MARGIN, pulse);
     }
-    strokeOutline(outline);
+    highlights.end();
+    drawGroupOutline(groupOutline(group.highlighted), pulse);
+    for (const f of group.fills) cursor.rect(f.x * TILE, f.y * TILE, f.w * TILE, f.h * TILE).fill({ color: f.color, alpha: f.alpha });
+    for (const g of group.ghosts) drawGhost(g, time);
+    for (const outline of group.outlines) strokeOutline(outline);
+
+    if (preview) {
+      if (preview.ghost) drawGhost(preview.ghost, time);
+      strokeOutline(preview.outline);
+    }
+    ghosts.end();
+  }
+
+  /** Le contour change avec le groupe : sa texture est remplacée, l'ancienne libérée. */
+  function drawGroupOutline(outline, alpha) {
+    highlightOutline.visible = !!outline;
+    if (!outline) return;
+    if (outline.key !== highlightOutlineKey) {
+      const old = highlightOutline.texture;
+      highlightOutline.texture = textures.fromCanvas(outline.canvas);
+      if (highlightOutlineKey !== null) old.destroy(true);
+      highlightOutlineKey = outline.key;
+    }
+    highlightOutline.position.set(outline.x, outline.y);
+    highlightOutline.alpha = alpha;
+  }
+
+  function drawGhost(g, time) {
+    const frame = beltFrame(time);
+    if (g.kind === 'belt') ghosts.next(beltTexture(g.dir, g.arms, frame), g.x * TILE, g.y * TILE, 0.6);
+    else if (g.kind === 'splitter' && g.priority) ghosts.next(smartSplitterTexture(g.dir, g.shape, g.priority, frame), g.x * TILE, g.y * TILE, 0.6);
+    else if (g.kind === 'splitter') ghosts.next(splitterTexture(g.dir, g.shape, frame), g.x * TILE, g.y * TILE, 0.6);
+    else if (g.kind === 'merger') ghosts.next(mergerGhostTexture(g.dir, g.shape, frame), g.x * TILE, g.y * TILE, 0.6);
+    else {
+      const b = g.building;
+      ghosts.next(machineTexture(b, animationState(b, time), false), b.x * TILE - MACHINE_MARGIN, b.y * TILE - MACHINE_MARGIN, 0.6);
+    }
   }
 
   function strokeOutline(outline) {
     cursor
       .rect(outline.x * TILE + 0.5, outline.y * TILE + 0.5, outline.w * TILE - 1, outline.h * TILE - 1)
       .stroke({ width: 1, color: outline.color });
-  }
-
-  function setGhost(texture, x, y) {
-    ghost.texture = texture;
-    ghost.position.set(x, y);
-    ghost.alpha = 0.6;
-    ghost.visible = true;
   }
 
   // ---------- Interface commune avec le rendu Canvas 2D ----------

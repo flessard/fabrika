@@ -32,7 +32,8 @@
     </div>
     <div class="help">
       Glisse pour te déplacer · <kbd>WASD</kbd> / flèches · <kbd>+</kbd> <kbd>−</kbd> zoom<br>
-      <kbd>R</kbd> tourner · <kbd>F</kbd> forme · <kbd>P</kbd> priorités · <kbd>M</kbd> son · clic droit efface · glisse un tapis pour le tracer
+      <kbd>R</kbd> tourner · <kbd>F</kbd> forme · <kbd>P</kbd> priorités · <kbd>M</kbd> son · clic droit efface · glisse un tapis pour le tracer<br>
+      <kbd>0</kbd> Sélection (ou <kbd>Maj</kbd> + glisser) : encadre pour déplacer, copier, effacer
     </div>
   </div>
 
@@ -48,6 +49,15 @@
 
   <!-- Fiche du bâtiment cliqué (voir src/ui/infoPanel.js). -->
   <div id="infoPanel" class="panel" hidden></div>
+
+  <!-- Menu des bâtiments sélectionnés (voir src/ui/selectionMenu.js). -->
+  <div id="selMenu" class="panel" role="toolbar" aria-label="Sélection" hidden>
+    <span class="sm-count"></span>
+    <button type="button" data-action="move">Déplacer <kbd>X</kbd></button>
+    <button type="button" data-action="copy">Copier <kbd>C</kbd></button>
+    <button type="button" data-action="erase" class="sm-danger">Effacer <kbd>Suppr</kbd></button>
+    <button type="button" data-action="close" class="sm-close" title="Désélectionner (Échap)">×</button>
+  </div>
 
   <div id="toast" class="panel" hidden></div>
   <div id="hint" class="panel" hidden></div>

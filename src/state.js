@@ -1,7 +1,7 @@
 // État partagé du jeu, regroupé en trois objets :
 //  - game : la partie (carte, bâtiments, particules, livraisons)
 //  - view : la caméra et la taille de l'écran
-//  - ui   : ce que le joueur a sélectionné ou survole
+//  - ui   : ce que le joueur a sélectionné ou survole (et le groupe qu'il déplace)
 
 export const game = {
   /** Graine de la carte actuelle (même graine = même carte). */
@@ -48,4 +48,10 @@ export const ui = {
   hover: null,
   /** Bâtiment dont la fiche est ouverte, ou null. */
   selected: null,
+  /** Zone en train d'être encadrée avec l'outil Sélection : { from, to } (cases), ou null. */
+  selectBox: null,
+  /** Bâtiments sélectionnés (outil Sélection), sur lesquels agit le menu. */
+  selection: [],
+  /** Groupe qui suit le curseur pour être déplacé ou copié (voir input/selection.js), ou null. */
+  placing: null,
 };

@@ -95,17 +95,42 @@ function createBuilding(type, x, y, dir) {
 
 /** Pose un bâtiment (sans vérifier la place : appeler canPlace avant). */
 export function placeBuilding(type, x, y, dir = RIGHT, props = {}) {
-  const b = Object.assign(createBuilding(type, x, y, dir), props);
+  return occupy(Object.assign(createBuilding(type, x, y, dir), props));
+}
+
+function occupy(b) {
   game.buildings.push(b);
-  for (const [cx, cy] of footprint(x, y, b.w, b.h)) game.grid[cellIndex(cx, cy)] = b;
+  for (const [cx, cy] of footprint(b.x, b.y, b.w, b.h)) game.grid[cellIndex(cx, cy)] = b;
   return b;
+}
+
+/** Retire un bâtiment de la carte sans le détruire (pour le déplacer). */
+export function liftBuilding(b) {
+  game.buildings.splice(game.buildings.indexOf(b), 1);
+  for (const [cx, cy] of footprint(b.x, b.y, b.w, b.h)) game.grid[cellIndex(cx, cy)] = null;
+}
+
+/**
+ * Vide un bâtiment : plus d'item, de stock ni de fabrication en cours, comme s'il
+ * venait d'être posé. Il garde sa place, sa direction, sa forme et ses priorités.
+ */
+export function emptyBuilding(b) {
+  const keep = { shape: b.shape, priority: b.priority };
+  Object.assign(b, createBuilding(b.type, b.x, b.y, b.dir));
+  for (const [name, value] of Object.entries(keep)) if (value !== undefined) b[name] = value;
+  b.stalled = false;
+}
+
+/** Remet sur la carte un bâtiment retiré par liftBuilding, à sa position (x, y) actuelle. */
+export function putBackBuilding(b) {
+  if (b.kind === 'drill') b.ore = majorityOre(b.x, b.y, b.w, b.h);
+  return occupy(b);
 }
 
 /** Enlève un bâtiment. Le dépôt ne peut pas être enlevé. */
 export function removeBuilding(b) {
   if (!b || b.kind === 'hub') return;
-  game.buildings.splice(game.buildings.indexOf(b), 1);
-  for (const [cx, cy] of footprint(b.x, b.y, b.w, b.h)) game.grid[cellIndex(cx, cy)] = null;
+  liftBuilding(b);
   spawnPuff((b.x + b.w / 2) * TILE, (b.y + b.h / 2) * TILE, 6);
 }
 

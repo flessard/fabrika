@@ -9,10 +9,11 @@ import { beltArms } from '../sim/belt.js';
 import { isConveyor } from '../sim/transfer.js';
 import { currentCtx, drawOn, rect, withAlpha } from './pen.js';
 import { bakeTerrain } from './terrainImage.js';
-import { cameraOrigin, carriedItemPosition, conveyorFrame, selectionOutline, cursorPreview, isVisible, visibleCells, waterSparkles } from './scene.js';
+import { cameraOrigin, carriedItemPosition, conveyorFrame, selectionOutline, selectionOverlay, cursorPreview, isVisible, visibleCells, waterSparkles } from './scene.js';
 import { beltFrame, drawBelt, drawMerger, drawMergerBase, drawMergerLid, drawSmartSplitter, drawSplitter } from './sprites/belts.js';
 import { ITEM_SIZE, itemSprite } from './sprites/items.js';
 import { drawMachine } from './sprites/machines.js';
+import { HIGHLIGHT_MARGIN, groupOutline, highlightFrame, selectionHighlight } from './sprites/highlight.js';
 
 export function createCanvasRenderer(canvas) {
   const ctx = canvas.getContext('2d');
@@ -65,6 +66,7 @@ export function createCanvasRenderer(canvas) {
       drawParticles(ox, oy);
       const selected = selectionOutline();
       if (selected) strokeOutline(selected, ox, oy);
+      drawSelection(selectionOverlay(ui.hover, time), ox, oy, time);
       drawCursor(preview, ox, oy, time);
     },
   };
@@ -101,18 +103,34 @@ function drawParticles(ox, oy) {
 
 function drawCursor(preview, ox, oy, time) {
   if (!preview) return;
-  const { ghost, outline } = preview;
-  if (ghost) {
-    const sx = ghost.x * TILE - ox, sy = ghost.y * TILE - oy;
-    withAlpha(0.6, () => {
-      if (ghost.kind === 'belt') drawBelt(sx, sy, ghost.dir, ghost.arms, beltFrame(time));
-      else if (ghost.kind === 'splitter' && ghost.priority) drawSmartSplitter(sx, sy, ghost.dir, ghost.shape, ghost.priority, beltFrame(time));
-      else if (ghost.kind === 'splitter') drawSplitter(sx, sy, ghost.dir, ghost.shape, beltFrame(time));
-      else if (ghost.kind === 'merger') drawMerger(sx, sy, ghost.dir, ghost.shape, beltFrame(time));
-      else drawMachine(ghost.building, ghost.building.x * TILE - ox, ghost.building.y * TILE - oy, time, { ghost: true });
-    });
-  }
-  strokeOutline(outline, ox, oy);
+  if (preview.ghost) drawGhost(preview.ghost, ox, oy, time);
+  strokeOutline(preview.outline, ox, oy);
+}
+
+function drawSelection({ highlighted, fills, outlines, ghosts }, ox, oy, time) {
+  const shine = highlightFrame(time), pulse = 0.8 + 0.2 * Math.sin(time * 5);
+  withAlpha(pulse, () => {
+    for (const b of highlighted) {
+      const { canvas } = selectionHighlight(b, shine);
+      currentCtx().drawImage(canvas, b.x * TILE - ox - HIGHLIGHT_MARGIN, b.y * TILE - oy - HIGHLIGHT_MARGIN);
+    }
+    const outline = groupOutline(highlighted);
+    if (outline) currentCtx().drawImage(outline.canvas, outline.x - ox, outline.y - oy);
+  });
+  for (const f of fills) withAlpha(f.alpha, () => rect(f.x * TILE - ox, f.y * TILE - oy, f.w * TILE, f.h * TILE, f.color));
+  for (const g of ghosts) drawGhost(g, ox, oy, time);
+  for (const outline of outlines) strokeOutline(outline, ox, oy);
+}
+
+function drawGhost(ghost, ox, oy, time) {
+  const sx = ghost.x * TILE - ox, sy = ghost.y * TILE - oy;
+  withAlpha(0.6, () => {
+    if (ghost.kind === 'belt') drawBelt(sx, sy, ghost.dir, ghost.arms, beltFrame(time));
+    else if (ghost.kind === 'splitter' && ghost.priority) drawSmartSplitter(sx, sy, ghost.dir, ghost.shape, ghost.priority, beltFrame(time));
+    else if (ghost.kind === 'splitter') drawSplitter(sx, sy, ghost.dir, ghost.shape, beltFrame(time));
+    else if (ghost.kind === 'merger') drawMerger(sx, sy, ghost.dir, ghost.shape, beltFrame(time));
+    else drawMachine(ghost.building, ghost.building.x * TILE - ox, ghost.building.y * TILE - oy, time, { ghost: true });
+  });
 }
 
 function strokeOutline(outline, ox, oy) {

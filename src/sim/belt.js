@@ -76,11 +76,12 @@ export function stepBelt(belt, dt) {
  * tapis, splitter ou machine l'alimente, et l'arrière quand rien ne l'alimente.
  * C'est ce qui donne les formes droit, coin, T et croix.
  *
- * `virtual` : un bâtiment pas encore posé (l'aperçu sous le curseur), traité comme
- * s'il était déjà sur la carte. Sert à montrer la forme qu'auront les tapis.
+ * `virtual` : un bâtiment pas encore posé (l'aperçu sous le curseur), ou une liste
+ * (un groupe déplacé ou copié), traité comme s'il était déjà sur la carte. Sert à montrer la forme qu'auront les tapis.
  */
 export function beltArms(belt, virtual = null) {
-  const at = (x, y) => (virtual && covers(virtual, x, y) ? virtual : buildingAt(x, y));
+  const extra = virtual ? [].concat(virtual) : [];
+  const at = (x, y) => extra.find((v) => covers(v, x, y)) ?? buildingAt(x, y);
   const arms = [belt.dir];
   let fed = false;
 

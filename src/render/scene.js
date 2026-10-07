@@ -9,6 +9,7 @@ import { game, ui, view } from '../state.js';
 import { GROUND } from '../world/terrain.js';
 import { anchorFor, buildingAt, canPlace } from '../world/buildings.js';
 import { hasShapes, shapeChoice } from '../input/shapePicker.js';
+import { highlightedBuildings, placementAt, selectBoxArea } from '../input/selection.js';
 import { beltArms } from '../sim/belt.js';
 
 /** Coin haut-gauche de la caméra arrondi au pixel, pour un rendu net. */
@@ -91,9 +92,10 @@ export function waterSparkles({ x0, y0, x1, y1 }, time) {
  *              (ex. une ligne droite qui deviendra un T)
  */
 export function cursorPreview(cell, time) {
-  if (!cell) return null;
+  if (!cell || ui.placing) return null;
 
   if (!isBuildTool(ui.tool)) {
+    if (ui.tool === 'select') return null; // la sélection a sa propre surbrillance
     const color = ui.tool === 'erase' ? P.red : P.yellow;
     const target = buildingAt(cell.x, cell.y);
     if (target) return { outline: { x: target.x, y: target.y, w: target.w, h: target.h, color } };
@@ -141,3 +143,41 @@ function reshapedNeighbors(virtual) {
 }
 
 const sameSides = (a, b) => a.length === b.length && a.every((side) => b.includes(side));
+
+/**
+ * Ce que montre la sélection (voir input/selection.js) :
+ *   highlighted : bâtiments sélectionnés (ou en train de l'être), teintés en entier
+ *   fills       : zones colorées en transparence { x, y, w, h (en cases), color, alpha }
+ *   outlines    : cadres { x, y, w, h, color }
+ *   ghosts      : aperçus du groupe qui suit le curseur (même format que dans cursorPreview)
+ */
+export function selectionOverlay(cell, time) {
+  const fills = [], outlines = [], ghosts = [];
+  const highlighted = highlightedBuildings();
+
+  const area = selectBoxArea();
+  if (area) {
+    fills.push({ ...area, color: P.cyan, alpha: 0.1 });
+    outlines.push({ ...area, color: P.cyan });
+  }
+
+  if (ui.placing && cell) {
+    const { x0, y0, spots, ok } = placementAt(cell);
+    const virtuals = spots.map(({ part, x, y }) => ({
+      type: part.type, kind: part.kind, x, y, w: part.w, h: part.h, dir: part.dir, shape: part.shape, priority: part.priority,
+    }));
+    for (const v of virtuals) ghosts.push(groupGhost(v, virtuals, time));
+    for (const { part, x, y, ok: fits } of spots) if (!fits) fills.push({ x, y, w: part.w, h: part.h, color: P.red, alpha: 0.5 });
+    outlines.push({ x: x0, y: y0, w: ui.placing.w, h: ui.placing.h, color: ok ? P.lime : P.red });
+  }
+  return { highlighted, fills, outlines, ghosts };
+}
+
+/** Aperçu d'une pièce du groupe ; les tapis se raccordent aux autres pièces du groupe. */
+function groupGhost(v, group, time) {
+  if (v.kind === 'belt') return { kind: 'belt', x: v.x, y: v.y, dir: v.dir, arms: beltArms(v, group) };
+  if (v.kind === 'splitter' || v.kind === 'merger') {
+    return { kind: v.kind, x: v.x, y: v.y, dir: v.dir, shape: v.shape, priority: v.priority ?? undefined };
+  }
+  return { kind: 'machine', building: { ...v, anim: time * 4, working: false } };
+}

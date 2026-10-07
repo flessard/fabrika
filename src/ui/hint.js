@@ -18,6 +18,8 @@ export function updateHint() {
 }
 
 function hintText() {
+  if (ui.placing) return placingHint(ui.placing);
+  if (ui.tool === 'select' && !ui.selection.length) return 'Glisse pour encadrer des bâtiments à déplacer, copier ou effacer';
   if (!ui.hover) return '';
   if (ui.tool === 'hand') return machineHint(buildingAt(ui.hover.x, ui.hover.y));
   if (hasShapes(ui.tool)) return shapeHint(ui.tool, shapeChoice(ui.tool, ui.hover));
@@ -40,6 +42,12 @@ function machineHint(b) {
   else if (b.outputs.length >= outputCapacity(b)) state = 'sortie bloquée';
 
   return `<b>${def.name}</b> · ${seconds} s par item · ${makes} · ${state}`;
+}
+
+function placingHint({ mode, parts }) {
+  const what = `${parts.length} élément${parts.length > 1 ? 's' : ''}`;
+  const verb = mode === 'move' ? `<b>Déplacer</b> ${what} · clic pour poser` : `<b>Copier</b> ${what} · clic pour poser une copie`;
+  return `${verb} · <b>R</b> tourner · <b>Échap</b> ${mode === 'move' ? 'annuler' : 'terminer'}`;
 }
 
 const TOOL_NAMES = { splitter: 'Splitter', smartSplitter: 'Prioritaire', merger: 'Groupeur' };

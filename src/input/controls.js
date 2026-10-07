@@ -7,6 +7,10 @@ import { buildingAt } from '../world/buildings.js';
 import { showCursorCell } from '../ui/hud.js';
 import { selectToolByNumber, setTool } from '../ui/toolbar.js';
 import { buildAt, eraseAt, extendBeltPath, priorityAction, rotateAction, shapeAction, startBeltPath } from './actions.js';
+import {
+  cancelPlacing, clearSelection, eraseSelection, extendSelectBox, finishSelectBox, placeGroupAt,
+  rotatePlacing, startCopy, startMove, startSelectBox,
+} from './selection.js';
 import { cellFromEvent, clampCamera, panBy, setZoom } from './camera.js';
 import { unlockAudio } from '../audio/engine.js';
 import { toggleSound } from '../ui/hud.js';
@@ -19,6 +23,8 @@ const keysDown = new Set();
  *   { mode: 'pan', x, y }            déplacer la carte
  *   { mode: 'erase' }                effacer en glissant (clic droit)
  *   { mode: 'build', last, belt }    construire en glissant (tracé de tapis)
+ *   { mode: 'select' }               encadrer des bâtiments (outil Sélection, ou Maj + glisser)
+ *   { mode: 'place' }                le groupe déplacé ou copié vient d'être posé
  */
 let drag = null;
 
@@ -47,12 +53,23 @@ function onPointerDown(e, canvas) {
   canvas.setPointerCapture(e.pointerId);
   const cell = cellFromEvent(e);
 
-  if (e.button === 2) {
+  if (e.button === 2 && ui.placing) {
+    cancelPlacing();
+  } else if (e.button === 2) {
     eraseAt(cell);
     drag = { mode: 'erase' };
-  } else if (e.button === 1 || ui.tool === 'hand' || keysDown.has(' ')) {
+  } else if (e.button === 1 || keysDown.has(' ')) {
+    drag = { mode: 'pan', x: e.clientX, y: e.clientY, moved: 0, cell, click: false };
+    canvas.classList.add('drag');
+  } else if (ui.placing) {
+    placeGroupAt(cell);
+    drag = { mode: 'place' };
+  } else if (ui.tool === 'select' || (ui.tool === 'hand' && e.shiftKey)) {
+    startSelectBox(clampToMap(cell));
+    drag = { mode: 'select' };
+  } else if (ui.tool === 'hand') {
     // Un clic sans glisser avec l'outil Déplacer ouvre la fiche d'une machine (voir endDrag).
-    drag = { mode: 'pan', x: e.clientX, y: e.clientY, moved: 0, cell, click: e.button === 0 && ui.tool === 'hand' };
+    drag = { mode: 'pan', x: e.clientX, y: e.clientY, moved: 0, cell, click: true };
     canvas.classList.add('drag');
   } else if (ui.tool === 'belt') {
     drag = { mode: 'build', last: cell, belt: startBeltPath(cell) };
@@ -80,6 +97,11 @@ function onPointerMove(e) {
     if (ui.hover) eraseAt(cell);
     return;
   }
+  if (drag.mode === 'select') {
+    extendSelectBox(clampToMap(cell));
+    return;
+  }
+  if (drag.mode === 'place') return;
   if (cell.x === drag.last.x && cell.y === drag.last.y) return;
   if (ui.tool === 'belt') drag.belt = extendBeltPath(drag.last, cell, drag.belt);
   else if (ui.tool === 'erase') eraseAt(cell);
@@ -90,7 +112,9 @@ function endDrag(canvas) {
   if (drag?.mode === 'pan' && drag.click && drag.moved < 5) {
     const target = buildingAt(drag.cell.x, drag.cell.y);
     ui.selected = target && hasInfoPanel(target) ? target : null;
+    clearSelection();
   }
+  if (drag?.mode === 'select') finishSelectBox();
   drag = null;
   canvas.classList.remove('drag');
 }
@@ -100,6 +124,11 @@ function endDrag(canvas) {
  * Défilement à deux doigts au trackpad → déplacement.
  */
 let wheelTotal = 0;
+const clampToMap = ({ x, y }) => ({
+  x: Math.max(0, Math.min(MAP_W - 1, x)),
+  y: Math.max(0, Math.min(MAP_H - 1, y)),
+});
+
 function onWheel(e) {
   e.preventDefault();
   const isMouseWheel = e.ctrlKey || e.deltaMode !== 0 ||
@@ -123,6 +152,20 @@ function onKeyDown(e) {
   if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(key)) e.preventDefault();
   keysDown.add(key);
 
+  // Groupe qui suit le curseur : R le tourne, Échap l'abandonne.
+  if (ui.placing && (key === 'r' || key === 'escape')) {
+    if (key === 'r') rotatePlacing();
+    else cancelPlacing();
+    return;
+  }
+  // Menu de la sélection
+  if (ui.selection.length) {
+    if (key === 'x') return startMove();
+    if (key === 'c') return startCopy();
+    if (key === 'delete' || key === 'backspace') return eraseSelection();
+    if (key === 'escape') return clearSelection();
+  }
+
   if (key === 'r') rotateAction(e.shiftKey);
   else if (key === 'f') shapeAction();
   else if (key === 'p') priorityAction();
@@ -133,7 +176,7 @@ function onKeyDown(e) {
   else if (key === 'm') toggleSound();
   else if (key === '+' || key === '=') setZoom(view.zoom + 1);
   else if (key === '-' || key === '_') setZoom(view.zoom - 1);
-  else if (/^[1-9]$/.test(key)) selectToolByNumber(Number(key));
+  else if (/^[0-9]$/.test(key)) selectToolByNumber(Number(key));
 }
 
 /** Déplacement continu tant que WASD ou les flèches sont enfoncées. À appeler à chaque image. */

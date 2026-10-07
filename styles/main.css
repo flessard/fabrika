@@ -168,6 +168,23 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 }
 #toast small { display: block; font-size: 12px; color: var(--mute); margin-top: 4px; }
 
+/* ---------- Menu de la sélection ---------- */
+
+#selMenu {
+  position: fixed;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  font-size: 12px;
+  z-index: 5;
+}
+.sm-count { color: var(--accent); padding: 0 6px 0 4px; white-space: nowrap; }
+#selMenu button { white-space: nowrap; }
+#selMenu kbd { font-family: var(--ui); font-size: 10px; color: var(--mute); background: var(--void); padding: 0 3px; margin-left: 2px; }
+#selMenu .sm-danger:hover { background: var(--bad); }
+#selMenu .sm-close { padding: 0 7px; font-size: 16px; line-height: 20px; }
+
 /* ---------- Petit écran ---------- */
 
 @media (max-width: 640px) {

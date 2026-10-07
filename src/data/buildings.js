@@ -38,7 +38,7 @@ export const outputCapacity = (b) => BUILDINGS[b.type].storage?.output ?? 0;
 /** Les bâtiments qu'on peut ouvrir d'un clic pour voir leur fiche (tout sauf le dépôt). */
 export const hasInfoPanel = (b) => b.kind !== 'hub';
 
-/** Outils de la palette, dans l'ordre des touches 1, 2, 3… */
+/** Outils de la palette, dans l'ordre des touches 1, 2, 3… (le 10e prend la touche 0). */
 export const TOOLS = [
   { id: 'hand', name: 'Déplacer' },
   { id: 'belt', name: 'Tapis' },
@@ -49,7 +49,8 @@ export const TOOLS = [
   { id: 'furnace', name: 'Four' },
   { id: 'press', name: 'Presse' },
   { id: 'erase', name: 'Gomme', separatorBefore: true },
+  { id: 'select', name: 'Sélection' },
 ];
 
-/** Vrai si l'outil pose un bâtiment (et n'est pas Déplacer ou Gomme). */
+/** Vrai si l'outil pose un bâtiment (et n'est pas Déplacer, Gomme ou Sélection). */
 export const isBuildTool = (toolId) => toolId in BUILDINGS;

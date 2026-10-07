@@ -55,6 +55,10 @@ const SOUNDS = {
   click(ctx, out) {
     tone(ctx, out, { from: 660, duration: 0.03, volume: 0.05 });
   },
+  /** Pose impossible : un bourdonnement grave. */
+  deny(ctx, out) {
+    tone(ctx, out, { wave: 'square', from: 130, to: 110, duration: 0.12, volume: 0.05 });
+  },
   /** Livraison au dépôt : une petite pièce. */
   deliver(ctx, out) {
     tone(ctx, out, { from: 988, duration: 0.05, volume: 0.06 });
