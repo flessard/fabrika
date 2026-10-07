@@ -4,10 +4,16 @@ import { CAMERA_MARGIN, CLIFF_HEIGHT, MAP_H, MAP_W, TILE, TOOLBAR_HEIGHT, ZOOM_M
 import { view } from '../state.js';
 
 let canvas = null;
+/** Fonction du rendu actif qui redimensionne sa surface de dessin (voir main.js). */
+let onResize = () => {};
 
 export function initCamera(gameCanvas) {
   canvas = gameCanvas;
   view.zoom = innerWidth >= 900 ? 3 : 2;
+}
+
+export function setResizeHandler(handler) {
+  onResize = handler;
 }
 
 /**
@@ -17,11 +23,9 @@ export function initCamera(gameCanvas) {
 export function resizeView() {
   view.width = Math.ceil(innerWidth / view.zoom);
   view.height = Math.ceil(innerHeight / view.zoom);
-  canvas.width = view.width;
-  canvas.height = view.height;
+  onResize(view.width, view.height);
   canvas.style.width = `${view.width * view.zoom}px`;
   canvas.style.height = `${view.height * view.zoom}px`;
-  canvas.getContext('2d').imageSmoothingEnabled = false;
   clampCamera();
 }
 

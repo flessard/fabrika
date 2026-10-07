@@ -112,12 +112,41 @@ export function machineSprite(type) {
 }
 
 // ---------- Parties animées ----------
+//
+// L'animation d'une machine est décrite par un petit « état » fait de nombres entiers
+// (numéro d'image, allumé ou non…). Un même état donne toujours le même dessin :
+// le rendu PixiJS peut donc fabriquer une texture par état et la réutiliser.
+
+const BLADE_FRAMES = 12;           // images pour un tiers de tour des lames
+const BLADE_PERIOD = (Math.PI * 2) / 3;
+const FLAG_FRAMES = 8;             // images pour une ondulation du drapeau
+const FLAG_SPEED = 5;              // radians par seconde
+
+/** État d'animation d'une machine à un instant donné. */
+export function animationState(b, time) {
+  switch (b.type) {
+    case 'drill':
+      return { blade: Math.floor(((b.anim % BLADE_PERIOD) / BLADE_PERIOD) * BLADE_FRAMES) };
+    case 'furnace':
+      return { lit: b.working ? 1 : 0, flicker: b.working ? Math.floor(time * 12) % 8 : 0 };
+    case 'press':
+      return { lit: b.working ? 1 : 0, piston: pressPistonOffset(b) };
+    case 'hub':
+      return {
+        flag: Math.floor(((time * FLAG_SPEED) / (Math.PI * 2)) * FLAG_FRAMES) % FLAG_FRAMES,
+        blink: Math.floor(time * 2) % 2,
+      };
+    default:
+      return {};
+  }
+}
 
 const ANIMATE = {
-  drill(b, sx, sy) {
+  drill({ blade }, sx, sy) {
     // Trois lames qui tournent dans le puits
+    const base = (blade / BLADE_FRAMES) * BLADE_PERIOD;
     for (let k = 0; k < 3; k++) {
-      const angle = b.anim + k * 2.094;
+      const angle = base + k * BLADE_PERIOD;
       for (let l = 1; l <= 5; l++) {
         rect(Math.round(sx + 16 + Math.cos(angle) * l), Math.round(sy + 9 + Math.sin(angle) * l), 1, 1, l > 4 ? P.silver : P.mist);
       }
@@ -125,11 +154,11 @@ const ANIMATE = {
     rect(sx + 15, sy + 8, 3, 3, P.yellow);
   },
 
-  furnace(b, sx, sy, time) {
-    if (b.working) {
+  furnace({ lit, flicker }, sx, sy) {
+    if (lit) {
       rect(sx + 11, sy + 21, 10, 9, P.orange);
       for (let k = 0; k < 7; k++) {
-        const h = hash2(k, Math.floor(time * 12));
+        const h = hash2(k, flicker);
         rect(sx + 11 + (h % 10), sy + 22 + ((h >> 4) % 8), 1, 1, (h >> 8) & 1 ? P.yellow : P.amber);
       }
       rect(sx + 11, sy + 21, 10, 1, P.yellow);
@@ -140,28 +169,30 @@ const ANIMATE = {
     }
   },
 
-  press(b, sx, sy) {
-    const off = pressPistonOffset(b);
-    rect(sx + 9, sy + 3 + off, 14, 11, P.black);
-    rect(sx + 10, sy + 4 + off, 12, 9, P.mist);
-    rect(sx + 10, sy + 4 + off, 12, 1, P.white);
-    rect(sx + 10, sy + 12 + off, 12, 1, P.silver);
-    rect(sx + 5, sy + 21, 6, 2, b.working ? P.lime : P.forest);
+  press({ lit, piston }, sx, sy) {
+    rect(sx + 9, sy + 3 + piston, 14, 11, P.black);
+    rect(sx + 10, sy + 4 + piston, 12, 9, P.mist);
+    rect(sx + 10, sy + 4 + piston, 12, 1, P.white);
+    rect(sx + 10, sy + 12 + piston, 12, 1, P.silver);
+    rect(sx + 5, sy + 21, 6, 2, lit ? P.lime : P.forest);
   },
 
-  hub(b, sx, sy, time) {
+  hub({ flag, blink }, sx, sy) {
     // Drapeau qui ondule
+    const phase = (flag / FLAG_FRAMES) * Math.PI * 2;
     for (let c = 0; c < 8; c++) {
-      const wave = Math.round(Math.sin(time * 5 - c * 0.8));
+      const wave = Math.round(Math.sin(phase - c * 0.8));
       rect(sx + 4 + c, sy + 4 + wave, 1, 5, c === 0 ? P.wine : P.red);
     }
-    // La trappe s'illumine à chaque livraison
-    if (b.flash > 0) withAlpha((b.flash / 0.3) * 0.8, () => rect(sx + 17, sy + 8, 14, 12, P.yellow));
-    const blink = Math.floor(time * 2) % 2;
     rect(sx + 6, sy + 33, 3, 3, blink ? P.lime : P.forest);
     rect(sx + 39, sy + 33, 3, 3, blink ? P.forest : P.lime);
   },
 };
+
+/** La trappe du dépôt s'illumine à chaque livraison (dessinée par-dessus, elle s'estompe). */
+export function drawHubFlash(b, sx, sy) {
+  if (b.flash > 0) withAlpha((b.flash / 0.3) * 0.8, () => rect(sx + 17, sy + 8, 14, 12, P.yellow));
+}
 
 // ---------- Indicateurs ----------
 
@@ -190,7 +221,7 @@ function drawOutputChute(b, sx, sy) {
  * Barre au-dessus de la machine : verte pendant la fabrication,
  * jaune clignotante quand les items finis ne peuvent pas sortir.
  */
-function drawProgressBar(b, sx, sy, time) {
+export function drawProgressBar(b, sx, sy, time) {
   const blocked = b.outputs.length >= MACHINE_OUTPUT_SLOTS;
   const busy = b.kind === 'drill' ? b.working : !!b.current;
   if (!busy && !blocked) return;
@@ -207,13 +238,21 @@ function drawProgressBar(b, sx, sy, time) {
   rect(x, y, filled, 1, P.glint);
 }
 
-/** Dessine une machine ou le dépôt à l'écran en (sx, sy). `ghost` = aperçu avant de poser. */
-export function drawMachine(b, sx, sy, time, { ghost = false } = {}) {
-  if (!ghost) withAlpha(0.35, () => rect(sx + 3, sy + 4, b.w * TILE, b.h * TILE, P.black)); // ombre
+/**
+ * Corps d'une machine pour un état d'animation donné : ombre, sprite fixe,
+ * parties animées et goulotte de sortie. Ne dépend pas du temps : c'est ce que
+ * le rendu PixiJS transforme en texture.
+ */
+export function drawMachineBody(b, state, sx, sy, { shadow = true } = {}) {
+  if (shadow) withAlpha(0.35, () => rect(sx + 3, sy + 4, b.w * TILE, b.h * TILE, P.black));
   currentCtx().drawImage(machineSprite(b.type), sx, sy);
-  ANIMATE[b.type]?.(b, sx, sy, time);
+  ANIMATE[b.type]?.(state, sx, sy);
+  if (b.kind !== 'hub') drawOutputChute(b, sx, sy);
+}
 
-  if (b.kind === 'hub') return;
-  if (!ghost) drawProgressBar(b, sx, sy, time);
-  drawOutputChute(b, sx, sy);
+/** Dessine une machine complète à l'écran en (sx, sy). `ghost` = aperçu avant de poser. */
+export function drawMachine(b, sx, sy, time, { ghost = false } = {}) {
+  drawMachineBody(b, animationState(b, time), sx, sy, { shadow: !ghost });
+  if (b.kind === 'hub') drawHubFlash(b, sx, sy);
+  else if (!ghost) drawProgressBar(b, sx, sy, time);
 }

@@ -12,8 +12,9 @@ import { rect, rotatedRect, withAlpha } from '../pen.js';
  *
  * `outputs` : côtés où les lamelles s'éloignent du centre (la sortie, ou les
  * sorties d'un splitter). Sur les autres bras, elles avancent vers le centre.
+ * `frame` (0 à 3) : position des lamelles, voir beltFrame().
  */
-export function drawBelt(sx, sy, dir, arms, time, outputs = [dir]) {
+export function drawBelt(sx, sy, dir, arms, frame, outputs = [dir]) {
   const arm = (side, x, y, w, h, color) => rotatedRect(sx, sy, side, x, y, w, h, color);
 
   // Contour
@@ -29,8 +30,7 @@ export function drawBelt(sx, sy, dir, arms, time, outputs = [dir]) {
   for (const side of arms) arm(side, 4, 4, 12, 8, P.night);
 
   // Lamelles qui défilent
-  const offset = Math.floor((time * BELT_SPEED * TILE) % 4);
-  for (const side of arms) drawSlats(sx, sy, side, outputs.includes(side), offset);
+  for (const side of arms) drawSlats(sx, sy, side, outputs.includes(side), frame);
 
   // Petite flèche de direction (seulement pour un tapis simple)
   if (outputs.length === 1) {
@@ -63,10 +63,14 @@ function drawSlats(sx, sy, side, isOutput, offset) {
   }
 }
 
+/** Les lamelles se répètent tous les 4 pixels : l'animation d'un tapis a 4 images. */
+export const BELT_FRAMES = 4;
+export const beltFrame = (time) => Math.floor((time * BELT_SPEED * TILE) % BELT_FRAMES);
+
 /** Splitter : un tapis avec un bras par sortie + l'entrée, et un boîtier orange au centre. */
-export function drawSplitter(sx, sy, dir, shapeId, time) {
+export function drawSplitter(sx, sy, dir, shapeId, frame) {
   const outputs = splitterOutputs(dir, shapeId);
-  drawBelt(sx, sy, dir, [...outputs, opposite(dir)], time, outputs);
+  drawBelt(sx, sy, dir, [...outputs, opposite(dir)], frame, outputs);
 
   rect(sx + 4, sy + 4, 8, 8, P.black);
   rect(sx + 5, sy + 5, 6, 6, P.orange);
