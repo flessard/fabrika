@@ -10,8 +10,10 @@ export const game = {
   map: null,
   /** Tous les bâtiments posés. */
   buildings: [],
-  /** grid[cellIndex(x, y)] → bâtiment qui occupe la case, ou null. */
+  /** grid[cellIndex(x, y)] → bâtiment qui occupe la case en surface, ou null. */
   grid: [],
+  /** Même chose pour le sous-sol (tapis souterrains et tunnels). */
+  under: [],
   /** Effets visuels (fumée, étincelles, icônes de livraison). */
   particles: [],
   /** Nombre d'items livrés au dépôt, par type d'item. */
@@ -35,6 +37,10 @@ export const view = {
 export const ui = {
   /** Outil actif (id d'un outil de data/buildings.js). */
   tool: 'hand',
+  /** Couche regardée et modifiée : 'surface' ou 'under' (vue du sous-sol, touche U). */
+  layer: 'surface',
+  /** Ce que pose l'outil Tunnel : 'in' (entrée) ou 'out' (sortie). */
+  tunnelEnd: 'in',
   /** Direction des prochains bâtiments posés (voir core/grid.js). */
   dir: 0,
   /** Forme du prochain splitter posé (voir data/splitterShapes.js). */
@@ -42,6 +48,8 @@ export const ui = {
   /** Forme et priorités du prochain splitter prioritaire posé. */
   smartSplitterShape: 'YR',
   smartPriority: ['F', 'L', 'R'],
+  /** Forme du prochain filtre posé. */
+  filterShape: 'T',
   /** Forme du prochain groupeur posé (voir data/mergerShapes.js). */
   mergerShape: 'T',
   /** Case sous le curseur, ou null. */
@@ -52,6 +60,8 @@ export const ui = {
   selectBox: null,
   /** Bâtiments sélectionnés (outil Sélection), sur lesquels agit le menu. */
   selection: [],
+  /** Chemin de tapis en train d'être tracé (rien n'est posé avant de relâcher) : { type, cells: [{ x, y, dir }] }, ou null. */
+  beltPlan: null,
   /** Groupe qui suit le curseur pour être déplacé ou copié (voir input/selection.js), ou null. */
   placing: null,
 };

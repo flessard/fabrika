@@ -5,21 +5,26 @@
 // À chaque image du jeu, on ne fait que placer des sprites qui réutilisent ces textures.
 //
 // Calques, du fond vers l'avant :
-//   terrain → eau et grille → tapis → items → machines → effets → curseur
+//   terrain → eau et grille → tapis → items → machines → effets
+//   → (vue du sous-sol : voile sombre, tapis souterrains et tunnels, leurs items) → curseur
 import { Application, CanvasSource, Container, Graphics, Sprite, Texture } from 'pixi.js';
 import { MAP_PADDING, TILE } from '../config.js';
-import { outputCapacity } from '../data/buildings.js';
+import { BUILDINGS, isUnderground, outputCapacity } from '../data/buildings.js';
 import { PALETTE as P } from '../data/palette.js';
 import { game, ui, view } from '../state.js';
 import { beltArms } from '../sim/belt.js';
 import { isConveyor } from '../sim/transfer.js';
 import { makeCanvas } from './pen.js';
 import { bakeTerrain } from './terrainImage.js';
-import { cameraOrigin, carriedItemPosition, conveyorFrame, selectionOutline, selectionOverlay, cursorPreview, isVisible, visibleCells, waterSparkles } from './scene.js';
-import { beltFrame, drawBelt, drawMerger, drawMergerBase, drawMergerLid, drawSmartSplitter, drawSplitter } from './sprites/belts.js';
+import { cameraOrigin, carriedItemPosition, conveyorFrame, machinePorts, selectionOutline, selectionOverlay, cursorPreview, isVisible, visibleCells, waterSparkles } from './scene.js';
+import {
+  beltColors, beltFrame, drawBelt, drawFilter, drawMerger, drawMergerBase, drawMergerLid, drawSmartSplitter, drawSplitter, filterKey,
+  drawTunnel, drawTunnelBase, drawTunnelLid, drawUnderBelt,
+} from './sprites/belts.js';
 import { ITEM_SIZE, itemSprite } from './sprites/items.js';
 import { animationState, drawMachineBody } from './sprites/machines.js';
 import { HIGHLIGHT_MARGIN, groupOutline, highlightFrame, selectionHighlight } from './sprites/highlight.js';
+import { DOCK_SIZE, PORT_SIZE, drawDock, drawPort } from './sprites/ports.js';
 
 /** Marge autour des textures de machines, pour l'ombre et la goulotte qui dépassent. */
 const MACHINE_MARGIN = 4;
@@ -53,8 +58,13 @@ export async function createPixiRenderer(canvas) {
   const items = new SpritePool();
   const lids = new SpritePool();         // couvercles des groupeurs, par-dessus les items
   const machines = new SpritePool();
+  const ports = new SpritePool();        // flèches d'entrée et de sortie des machines
   const effects = new Graphics();        // barres de progression, fumée, étincelles
   const icons = new SpritePool();
+  const underShade = new Graphics();     // voile sombre sur la surface, en vue du sous-sol
+  const underBelts = new SpritePool();
+  const underItems = new SpritePool();
+  const underLids = new SpritePool();    // portails des tunnels, par-dessus les items
   const highlights = new SpritePool();   // bâtiments sélectionnés, teintés de cyan
   const highlightOutline = new Sprite(); // contour du groupe sélectionné
   let highlightOutlineKey = null;
@@ -63,7 +73,8 @@ export async function createPixiRenderer(canvas) {
 
   world.addChild(
     terrain, overlay, belts.layer, itemShadows.layer, items.layer, lids.layer,
-    machines.layer, effects, icons.layer, highlights.layer, highlightOutline, ghosts.layer, cursor,
+    machines.layer, ports.layer, effects, icons.layer,
+    underShade, underBelts.layer, underItems.layer, underLids.layer, highlights.layer, highlightOutline, ghosts.layer, cursor,
   );
 
   const shadowTexture = textures.get('item-shadow', ITEM_SIZE, 6, (ctx) => {
@@ -75,20 +86,44 @@ export async function createPixiRenderer(canvas) {
   const beltTexture = (dir, arms, frame) =>
     textures.get(`belt|${dir}|${[...arms].sort().join('')}|${frame}`, TILE, TILE, () => drawBelt(0, 0, dir, arms, frame));
 
-  const splitterTexture = (dir, shape, frame) =>
-    textures.get(`splitter|${dir}|${shape}|${frame}`, TILE, TILE, () => drawSplitter(0, 0, dir, shape, frame));
+  // `under` : version souterraine (rails couleur terre).
+  const splitterTexture = (dir, shape, frame, under = false) =>
+    textures.get(`splitter|${dir}|${shape}|${frame}|${under}`, TILE, TILE, () => drawSplitter(0, 0, dir, shape, frame, beltColors(under)));
 
-  const smartSplitterTexture = (dir, shape, priority, frame) =>
-    textures.get(`smart|${dir}|${shape}|${priority.join('')}|${frame}`, TILE, TILE, () => drawSmartSplitter(0, 0, dir, shape, priority, frame));
+  const smartSplitterTexture = (dir, shape, priority, frame, under = false) =>
+    textures.get(`smart|${dir}|${shape}|${priority.join('')}|${frame}|${under}`, TILE, TILE,
+      () => drawSmartSplitter(0, 0, dir, shape, priority, frame, beltColors(under)));
 
-  const mergerTexture = (dir, shape, frame) =>
-    textures.get(`merger|${dir}|${shape}|${frame}`, TILE, TILE, () => drawMergerBase(0, 0, dir, shape, frame));
+  const filterTexture = (dir, shape, filters, frame, under = false) =>
+    textures.get(`filter|${dir}|${shape}|${filterKey(filters)}|${frame}|${under}`, TILE, TILE,
+      () => drawFilter(0, 0, dir, shape, filters, frame, beltColors(under)));
+
+  const mergerTexture = (dir, shape, frame, under = false) =>
+    textures.get(`merger|${dir}|${shape}|${frame}|${under}`, TILE, TILE, () => drawMergerBase(0, 0, dir, shape, frame, beltColors(under)));
 
   const mergerLidTexture = (dir, shape) =>
     textures.get(`merger-lid|${dir}|${shape}`, TILE, TILE, () => drawMergerLid(0, 0, dir, shape));
 
-  const mergerGhostTexture = (dir, shape, frame) =>
-    textures.get(`merger-ghost|${dir}|${shape}|${frame}`, TILE, TILE, () => drawMerger(0, 0, dir, shape, frame));
+  const mergerGhostTexture = (dir, shape, frame, under = false) =>
+    textures.get(`merger-ghost|${dir}|${shape}|${frame}|${under}`, TILE, TILE, () => drawMerger(0, 0, dir, shape, frame, beltColors(under)));
+
+  const underBeltTexture = (dir, arms, frame) =>
+    textures.get(`under|${dir}|${[...arms].sort().join('')}|${frame}`, TILE, TILE, () => drawUnderBelt(0, 0, dir, arms, frame));
+
+  const tunnelBaseTexture = (dir, frame) =>
+    textures.get(`tunnel|${dir}|${frame}`, TILE, TILE, () => drawTunnelBase(0, 0, dir, frame));
+
+  const tunnelLidTexture = (dir, end) =>
+    textures.get(`tunnel-lid|${dir}|${end}`, TILE, TILE, () => drawTunnelLid(0, 0, dir, end));
+
+  const tunnelGhostTexture = (dir, end, frame) =>
+    textures.get(`tunnel-ghost|${dir}|${end}|${frame}`, TILE, TILE, () => drawTunnel(0, 0, dir, end, frame));
+
+  const portTexture = (dir, kind) =>
+    textures.get(`port|${dir}|${kind}`, PORT_SIZE, PORT_SIZE, () => drawPort(0, 0, dir, kind));
+
+  const dockTexture = (dir, kind) =>
+    textures.get(`dock|${dir}|${kind}`, DOCK_SIZE, DOCK_SIZE, () => drawDock(0, 0, dir, kind));
 
   const itemTexture = (type) => textures.get(`item|${type}`, ITEM_SIZE, ITEM_SIZE, (ctx) => ctx.drawImage(itemSprite(type), 0, 0));
 
@@ -166,8 +201,8 @@ export async function createPixiRenderer(canvas) {
     for (const outline of group.outlines) strokeOutline(outline);
 
     if (preview) {
-      if (preview.ghost) drawGhost(preview.ghost, time);
-      strokeOutline(preview.outline);
+      for (const g of preview.ghosts ?? []) drawGhost(g, time);
+      for (const outline of preview.outlines) strokeOutline(outline);
     }
     ghosts.end();
   }
@@ -189,9 +224,12 @@ export async function createPixiRenderer(canvas) {
   function drawGhost(g, time) {
     const frame = beltFrame(time);
     if (g.kind === 'belt') ghosts.next(beltTexture(g.dir, g.arms, frame), g.x * TILE, g.y * TILE, 0.6);
-    else if (g.kind === 'splitter' && g.priority) ghosts.next(smartSplitterTexture(g.dir, g.shape, g.priority, frame), g.x * TILE, g.y * TILE, 0.6);
-    else if (g.kind === 'splitter') ghosts.next(splitterTexture(g.dir, g.shape, frame), g.x * TILE, g.y * TILE, 0.6);
-    else if (g.kind === 'merger') ghosts.next(mergerGhostTexture(g.dir, g.shape, frame), g.x * TILE, g.y * TILE, 0.6);
+    else if (g.kind === 'underBelt') ghosts.next(underBeltTexture(g.dir, g.arms, frame), g.x * TILE, g.y * TILE, 0.6);
+    else if (g.kind === 'tunnel') ghosts.next(tunnelGhostTexture(g.dir, g.end, frame), g.x * TILE, g.y * TILE, 0.6);
+    else if (g.kind === 'splitter' && g.filters) ghosts.next(filterTexture(g.dir, g.shape, g.filters, frame, g.under), g.x * TILE, g.y * TILE, 0.6);
+    else if (g.kind === 'splitter' && g.priority) ghosts.next(smartSplitterTexture(g.dir, g.shape, g.priority, frame, g.under), g.x * TILE, g.y * TILE, 0.6);
+    else if (g.kind === 'splitter') ghosts.next(splitterTexture(g.dir, g.shape, frame, g.under), g.x * TILE, g.y * TILE, 0.6);
+    else if (g.kind === 'merger') ghosts.next(mergerGhostTexture(g.dir, g.shape, frame, g.under), g.x * TILE, g.y * TILE, 0.6);
     else {
       const b = g.building;
       ghosts.next(machineTexture(b, animationState(b, time), false), b.x * TILE - MACHINE_MARGIN, b.y * TILE - MACHINE_MARGIN, 0.6);
@@ -225,28 +263,52 @@ export async function createPixiRenderer(canvas) {
       const cells = visibleCells(ox, oy);
 
       drawOverlay(cells, time);
-      for (const pool of [belts, itemShadows, items, lids, machines, icons]) pool.begin();
+      const allPools = [belts, itemShadows, items, lids, machines, ports, icons, underBelts, underItems, underLids];
+      for (const pool of allPools) pool.begin();
       effects.clear();
+      underShade.clear();
 
       // Aperçu calculé d'abord : il peut changer la forme des tapis voisins.
       const preview = cursorPreview(ui.hover, time);
       const armsOf = (b) => preview?.affected?.get(b) ?? beltArms(b);
 
-      const visible = game.buildings.filter((b) => isVisible(b, ox, oy));
-      for (const b of visible) {
-        if (b.kind === 'belt') belts.next(beltTexture(b.dir, armsOf(b), conveyorFrame(b, frame)), b.x * TILE, b.y * TILE);
-        else if (b.kind === 'splitter' && b.priority) belts.next(smartSplitterTexture(b.dir, b.shape, b.priority, conveyorFrame(b, frame)), b.x * TILE, b.y * TILE);
-        else if (b.kind === 'splitter') belts.next(splitterTexture(b.dir, b.shape, conveyorFrame(b, frame)), b.x * TILE, b.y * TILE);
-        else if (b.kind === 'merger') {
-          belts.next(mergerTexture(b.dir, b.shape, conveyorFrame(b, frame)), b.x * TILE, b.y * TILE);
-          lids.next(mergerLidTexture(b.dir, b.shape), b.x * TILE, b.y * TILE);
-        } else continue;
+      /** Tapis, splitter, groupeur ou tunnel, avec l'item qu'il porte, dans les calques donnés. */
+      const drawConveyor = (b, pools) => {
+        const x = b.x * TILE, y = b.y * TILE, f = conveyorFrame(b, frame);
+        const end = BUILDINGS[b.type].tunnel, under = isUnderground(b);
+        if (end) {
+          pools.base.next(tunnelBaseTexture(b.dir, f), x, y);
+          pools.lids.next(tunnelLidTexture(b.dir, end), x, y);
+        } else if (b.type === 'underBelt') pools.base.next(underBeltTexture(b.dir, armsOf(b), f), x, y);
+        else if (b.kind === 'belt') pools.base.next(beltTexture(b.dir, armsOf(b), f), x, y);
+        else if (b.kind === 'splitter' && b.filters) pools.base.next(filterTexture(b.dir, b.shape, b.filters, f, under), x, y);
+        else if (b.kind === 'splitter' && b.priority) pools.base.next(smartSplitterTexture(b.dir, b.shape, b.priority, f, under), x, y);
+        else if (b.kind === 'splitter') pools.base.next(splitterTexture(b.dir, b.shape, f, under), x, y);
+        else {
+          pools.base.next(mergerTexture(b.dir, b.shape, f, under), x, y);
+          pools.lids.next(mergerLidTexture(b.dir, b.shape), x, y);
+        }
         if (b.item) {
           const [px, py] = carriedItemPosition(b);
           const sx = Math.round(px - 3), sy = Math.round(py - 3);
-          itemShadows.next(shadowTexture, sx + 1, sy + 2, 0.3);
-          items.next(itemTexture(b.item.type), sx, sy - 1);
+          pools.shadows?.next(shadowTexture, sx + 1, sy + 2, 0.3);
+          pools.items.next(itemTexture(b.item.type), sx, sy - 1);
         }
+      };
+
+      // Tapis, splitters et groupeurs souterrains : seulement en vue du sous-sol.
+      // Les tunnels sont aux deux étages.
+      const underView = ui.layer === 'under';
+      const below = [];
+      const visible = game.buildings.filter((b) => isVisible(b, ox, oy));
+      for (const b of visible) {
+        if (!isConveyor(b)) continue;
+        if (isUnderground(b)) {
+          if (underView) below.push(b);
+          continue;
+        }
+        drawConveyor(b, { base: belts, shadows: itemShadows, items, lids });
+        if (underView && BUILDINGS[b.type].tunnel) below.push(b);
       }
 
       // Les machines du haut d'abord, pour que celles du bas passent devant.
@@ -260,8 +322,19 @@ export async function createPixiRenderer(canvas) {
         }
       }
 
+      for (const p of machinePorts(sorted)) {
+        if (p.connected) ports.next(dockTexture(p.dir, p.kind), p.x - DOCK_SIZE / 2, p.y - DOCK_SIZE / 2);
+        else ports.next(portTexture(p.dir, p.kind), p.x - PORT_SIZE / 2, p.y - PORT_SIZE / 2, p.faint ? 0.6 : 1);
+      }
+
       drawParticles();
-      for (const pool of [belts, itemShadows, items, lids, machines, icons]) pool.end();
+
+      if (underView) {
+        underShade.rect(ox, oy, view.width, view.height).fill({ color: P.soot, alpha: 0.8 });
+        for (const b of below) drawConveyor(b, { base: underBelts, items: underItems, lids: underLids });
+      }
+
+      for (const pool of allPools) pool.end();
       drawCursor(preview, time);
 
       app.renderer.render(app.stage);

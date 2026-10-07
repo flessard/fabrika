@@ -127,7 +127,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   display: grid;
   justify-items: center;
   gap: 2px;
-  width: 64px;
+  width: 58px;
   padding: 6px 2px 4px;
   background: var(--panel);
   box-shadow: none;
@@ -138,6 +138,9 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .tool kbd { position: absolute; top: 2px; left: 4px; font-family: var(--ui); font-size: 10px; color: var(--mute); }
 .tool:hover { background: var(--panel-hi); }
 .tool[aria-pressed="true"] { border-color: var(--accent); background: var(--panel-hi); }
+/* Au sous-sol, les outils qui n'y servent pas sont estompés. */
+.tool.unavailable { opacity: .3; }
+#tool-layer[aria-pressed="true"] { border-color: #2ce8f5; }
 .sep { width: 2px; background: var(--panel-hi); margin: 4px 2px; flex: none; }
 
 /* ---------- Bulles ---------- */
@@ -155,6 +158,16 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   text-overflow: ellipsis;
 }
 #hint b { color: var(--accent); font-weight: 600; }
+/* Pose impossible : la bulle passe au rouge et dit pourquoi. */
+#hint.warn { color: #fff; background: #5e1d27; box-shadow: inset 0 0 0 2px var(--bad), 0 4px 0 var(--void); }
+#hint.warn b { color: #fee761; }
+#hint.shake { animation: hint-shake .32s steps(6); }
+@keyframes hint-shake {
+  0%, 100% { transform: translateX(-50%); }
+  25% { transform: translateX(calc(-50% - 6px)); }
+  50% { transform: translateX(calc(-50% + 6px)); }
+  75% { transform: translateX(calc(-50% - 3px)); }
+}
 
 #toast {
   position: fixed;
@@ -253,6 +266,22 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .ip-rate { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .ip-rate b { font-size: 14px; font-variant-numeric: tabular-nums; }
+
+/* Filtre : une rangée d'icônes d'items par sortie, à allumer ou éteindre */
+.ip-filter { display: grid; gap: 3px; }
+.ip-filter + .ip-filter { margin-top: 4px; }
+.ip-filter-head { display: flex; justify-content: space-between; gap: 8px; }
+.ip-chips { display: flex; flex-wrap: wrap; gap: 2px; }
+.ip-chip { padding: 2px; line-height: 0; background: var(--void); box-shadow: none; border: 2px solid var(--panel-hi); opacity: .45; }
+.ip-chip:hover { opacity: .8; background: var(--panel-hi); }
+.ip-chip[aria-pressed="true"] { opacity: 1; border-color: var(--ok); background: var(--panel-hi); }
+.ip-chip .ip-item { width: 16px; height: 16px; }
+.ip-chosen { font-size: 11px; color: var(--ok); }
+
+/* Info-bulle des icônes d'items (nom, famille, effet du clic) */
+#chipTooltip { position: fixed; z-index: 10; padding: 5px 8px; font-size: 12px; line-height: 1.35; pointer-events: none; white-space: nowrap; }
+#chipTooltip b { color: var(--accent); }
+#chipTooltip small { color: var(--ink); font-size: 11px; }
 
 /* Priorités du splitter prioritaire */
 .ip-prio { display: grid; grid-template-columns: 18px 1fr auto 26px; gap: 6px; align-items: center; }

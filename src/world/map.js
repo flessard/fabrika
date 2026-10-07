@@ -12,6 +12,7 @@ export function startNewMap(seed) {
   game.map = generateTerrain(seed, starterTerrain(cx, cy));
   game.buildings = [];
   game.grid = new Array(MAP_W * MAP_H).fill(null);
+  game.under = new Array(MAP_W * MAP_H).fill(null);
   game.particles = [];
   game.delivered = {};
   game.tick = 0;

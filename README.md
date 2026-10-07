@@ -39,13 +39,17 @@ chaque résultat devient une texture réutilisée.
 |---|---|
 | Se déplacer sur la carte | glisser (outil Déplacer), WASD / flèches, trackpad |
 | Zoom | `+` / `−`, molette |
-| Choisir un outil | `1` à `9`, `0` pour Sélection |
+| Choisir un outil | `1` à `9`, `0` pour Sélection, `T` pour Tunnel, `I` pour Filtre |
+| Voir le sous-sol / revenir en surface | `U`, ou le bouton Sous-sol |
+| Tunnel : passer de l'entrée à la sortie | `F` (après une entrée, l'outil passe tout seul à la sortie) |
 | Tourner | `R` |
 | Forme du splitter, du prioritaire ou du groupeur (T, Y droite, Y gauche, Croix) | `F` (ou `R` quand il est posé sur un tapis) |
 | Ordre des priorités du splitter prioritaire | `P`, ou ▲ dans sa fiche |
 | Ouvrir la fiche d'un bâtiment (stock, cadence, débit) | clic avec l'outil Déplacer |
+| Régler un filtre (quels items vont dans quelle sortie) | dans sa fiche, qui s'ouvre quand on le pose : clic sur les icônes d'items de chaque sortie |
 | Fermer la fiche | `Échap` ou × |
 | Couper le son | `M` |
+| Tracer des tapis | glisser avec l'outil Tapis : le chemin s'affiche en aperçu et les tapis sont posés au relâchement (revenir en arrière raccourcit, `Échap` ou clic droit annule) |
 | Effacer | clic droit ou Gomme |
 | Sélectionner plusieurs bâtiments | glisser avec l'outil Sélection, ou `Maj` + glisser avec Déplacer |
 | Déplacer / copier / effacer la sélection | menu au-dessus de la sélection, ou `X` / `C` / `Suppr` |
@@ -75,7 +79,7 @@ src/
 
   world/                la carte et ce qui est posé dessus
     terrain.js          génération procédurale (sol, décor, gisements)
-    buildings.js        poser, trouver, enlever des bâtiments
+    buildings.js        poser, trouver, enlever des bâtiments (surface et sous-sol)
     starterFactory.js   l'usine de départ
     map.js              démarrer une nouvelle carte
     stressTest.js       boucles de tapis pour le mode ?stress
@@ -113,6 +117,17 @@ src/
     perf.js             compteur d'images par seconde
 ```
 
+### Surface et sous-sol
+
+La carte a deux couches : `game.grid` (la surface) et `game.under` (le sous-sol).
+Chaque bâtiment dit dans `data/buildings.js` les couches qu'il occupe (`layers`), d'où
+viennent ses items (`inputLayer`) et où il les envoie (`outputLayer`). Un item part sur la
+couche où le bâtiment envoie ses items et n'est reçu que par un bâtiment qui les prend sur
+cette couche (`sim/transfer.js`). L'entrée de tunnel occupe les deux couches, reçoit en
+surface et envoie au sous-sol ; la sortie fait l'inverse. Les versions souterraines du tapis,
+des splitters et du groupeur (`underBelt`, `underSplitter`…) se comportent comme leur
+version de surface (`base`).
+
 ### Le principe
 
 - La **simulation** (`sim/`) fait avancer l'usine par pas fixes de 1/60 s. Elle ne dessine rien.
@@ -135,12 +150,20 @@ La simulation la prend en charge sans autre changement.
 - Carte de 64 × 48 cases générée procéduralement (lacs, arbres, gisements de fer, cuivre, charbon)
 - Tapis qui se raccordent automatiquement (droit, coin, T, croix) et qui alternent les entrées aux jonctions
 - Aperçu sous le curseur qui montre les raccords avant de poser
+- Filtres : chaque sortie prend les items choisis dans sa fiche (une sortie sans choix prend
+  le reste), avec des pastilles de couleur sur le tapis pour voir ce qui part où
 - Splitters à plusieurs formes (alternance stricte), splitters prioritaires (1, 2, 3)
   et groupeurs (2 ou 3 entrées, à tour de rôle)
 - Files d'items centrées : un item par case, les tapis bloqués s'arrêtent
 - Foreuse, Four, Presse avec stock interne et barre de progression
 - Sélection de plusieurs bâtiments à déplacer, copier ou effacer, en tournant le groupe
   (les bâtiments déplacés ou copiés repartent vides)
+- Tunnels et sous-sol : une entrée fait descendre les items, une sortie les fait remonter.
+  Au sous-sol (`U`), tapis, splitters, prioritaires et groupeurs souterrains passent sous
+  les machines, les tapis et même l'eau, mais deux tapis souterrains ne se croisent jamais
+- Entrées et sorties des machines : un raccord (bouche sombre et pinces vertes pour une entrée,
+  orange pour une sortie) là où un tapis est branché ; ailleurs, des flèches montrent où brancher
+  (la sortie toujours, toutes les entrées en survolant une machine ou avec un outil de tapis)
 - Fiche de chaque bâtiment : état, stock, cadence réelle et maximale, débit des tapis
 - Sons rétro générés par le code, avec son spatial (plus fort près des usines)
 - Objectif de livraison au dépôt

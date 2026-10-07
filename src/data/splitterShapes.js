@@ -27,6 +27,36 @@ export function nextShapeId(id) {
 const RELATIVE = { F: (dir) => dir, L: turnLeft, R: turnRight };
 export const DEFAULT_PRIORITY = ['F', 'L', 'R'];
 
+/** Côté relatif ('F', 'L' ou 'R') de la sortie `side` pour un flux vers `dir`. */
+export const relativeSide = (dir, side) => Object.keys(RELATIVE).find((rel) => RELATIVE[rel](dir) === side);
+
+// ---------- Filtre ----------
+//
+// Chaque sortie a sa liste d'items, gardée comme les priorités par rapport au sens du
+// flux : { F: [...], L: [...], R: [...] }. Une sortie sans liste prend « le reste ».
+
+export const emptyFilters = () => ({ F: [], L: [], R: [] });
+
+/** Items acceptés par la sortie `side` d'un filtre (liste vide : le reste). */
+export const filterFor = (filters, dir, side) => filters[relativeSide(dir, side)] ?? [];
+
+/**
+ * Sorties où un item de ce type peut partir : celles qui le listent, sinon celles qui
+ * ne listent rien (« le reste »). Peut être vide : l'item attend alors au centre.
+ */
+export function filterOutputs(dir, shapeId, filters, itemType) {
+  const outputs = splitterOutputs(dir, shapeId);
+  const listed = outputs.filter((side) => filterFor(filters, dir, side).includes(itemType));
+  return listed.length ? listed : outputs.filter((side) => !filterFor(filters, dir, side).length);
+}
+
+/** Ajoute ou retire un item de la liste de la sortie `side`. */
+export function toggleFilter(filters, dir, side, itemType) {
+  const rel = relativeSide(dir, side);
+  const list = filters[rel];
+  filters[rel] = list.includes(itemType) ? list.filter((t) => t !== itemType) : [...list, itemType];
+}
+
 /** Sorties du splitter rangées de la plus prioritaire à la moins prioritaire. */
 export function priorityOrder(dir, shapeId, priority) {
   const outputs = splitterOutputs(dir, shapeId);

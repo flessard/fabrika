@@ -44,21 +44,21 @@ export function insertIntoMerger(merger, itemType, dir, from) {
  * machines) qui arrivent vers cette case, avec le moins d'entrées inutiles.
  * Une forme n'est possible que si la sortie n'est pas bloquée.
  */
-export function mergerOptions(x, y, dir, preferredShape) {
-  if (outputScore(x, y, dir) < 0) return [];
+export function mergerOptions(x, y, dir, preferredShape, layer = 'surface') {
+  if (outputScore(x, y, dir, layer) < 0) return [];
 
   const feederSides = [0, 1, 2, 3].filter((side) => {
     if (side === dir) return false;
     const [dx, dy] = DIRS[side];
-    const neighbor = buildingAt(x + dx, y + dy);
-    return neighbor && feedsInto(neighbor, x, y, opposite(side));
+    const neighbor = buildingAt(x + dx, y + dy, layer);
+    return neighbor && feedsInto(neighbor, x, y, opposite(side), layer);
   });
 
   const options = MERGER_SHAPES.map((shape) => {
     const inputs = shape.inputs(dir);
     const covered = feederSides.filter((s) => inputs.includes(s)).length;
     const missed = feederSides.length - covered;
-    const unused = inputs.filter((s) => !feederSides.includes(s) && !openGround(x, y, s)).length;
+    const unused = inputs.filter((s) => !feederSides.includes(s) && !openGround(x, y, s, layer)).length;
     return { id: shape.id, name: shape.name, inputs: inputs.length, score: covered * 10 - missed * 10 - unused - inputs.length * 0.1 };
   });
   options.sort((a, b) => b.score - a.score);
@@ -68,9 +68,9 @@ export function mergerOptions(x, y, dir, preferredShape) {
   return options;
 }
 
-/** Case libre où l'on pourrait encore brancher quelque chose plus tard. */
-function openGround(x, y, side) {
+/** Case libre où l'on pourrait encore brancher quelque chose plus tard (au sous-sol, même sous l'eau). */
+function openGround(x, y, side, layer) {
   const [dx, dy] = DIRS[side];
   const nx = x + dx, ny = y + dy;
-  return inBounds(nx, ny) && !buildingAt(nx, ny) && isBuildable(game.map, cellIndex(nx, ny));
+  return inBounds(nx, ny) && !buildingAt(nx, ny, layer) && (layer === 'under' || isBuildable(game.map, cellIndex(nx, ny)));
 }

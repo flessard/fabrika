@@ -1,13 +1,16 @@
 // Poser, retrouver et enlever des bâtiments sur la grille.
-import { BUILDINGS } from '../data/buildings.js';
+import { BUILDINGS, layersOf } from '../data/buildings.js';
+import { emptyFilters } from '../data/splitterShapes.js';
 import { DOWN, LEFT, RIGHT, cellIndex, inBounds } from '../core/grid.js';
 import { TILE } from '../config.js';
 import { game } from '../state.js';
-import { ORE_ITEM, isBuildable } from './terrain.js';
+import { ORE_ITEM, terrainProblem } from './terrain.js';
 import { spawnPuff } from '../sim/particles.js';
 
-/** Bâtiment qui occupe la case (x, y), ou null. */
-export const buildingAt = (x, y) => (inBounds(x, y) ? game.grid[cellIndex(x, y)] : null);
+const gridOf = (layer) => (layer === 'under' ? game.under : game.grid);
+
+/** Bâtiment qui occupe la case (x, y) sur la couche donnée (surface ou sous-sol), ou null. */
+export const buildingAt = (x, y, layer = 'surface') => (inBounds(x, y) ? gridOf(layer)[cellIndex(x, y)] : null);
 
 /** Toutes les cases couvertes par un bâtiment de taille w × h posé en (x, y). */
 function* footprint(x, y, w, h) {
@@ -20,19 +23,34 @@ export function anchorFor(type, cell) {
   return { x: cell.x - Math.floor((w - 1) / 2), y: cell.y - Math.floor((h - 1) / 2) };
 }
 
-/** Vrai si un bâtiment de ce type peut être posé avec son coin haut-gauche en (x, y). */
-export function canPlace(type, x, y) {
+/**
+ * Pourquoi un bâtiment de ce type ne peut pas être posé avec son coin haut-gauche
+ * en (x, y) : un court texte à montrer au joueur (« eau », « arbre »,
+ * « déjà occupé (Four) »…), ou null si rien ne l'empêche.
+ * Chaque couche qu'il occupe doit être libre. Le sous-sol passe sous tout, même l'eau.
+ */
+export function placementProblem(type, x, y) {
   const { w, h, kind } = BUILDINGS[type];
+  const layers = layersOf(type);
   let onOre = false;
   for (const [cx, cy] of footprint(x, y, w, h)) {
-    if (!inBounds(cx, cy)) return false;
+    if (!inBounds(cx, cy)) return 'hors de la carte';
     const i = cellIndex(cx, cy);
-    if (!isBuildable(game.map, i) || game.grid[i]) return false;
+    for (const layer of layers) {
+      const other = gridOf(layer)[i];
+      if (other) return `${layer === 'under' ? 'sous-sol déjà occupé' : 'déjà occupé'} (${BUILDINGS[other.type].name})`;
+    }
+    const terrain = layers.includes('surface') && terrainProblem(game.map, i);
+    if (terrain) return terrain;
     if (game.map.ore[i]) onOre = true;
   }
   // Une foreuse doit toucher au moins une case de gisement.
-  return kind === 'drill' ? onOre : true;
+  if (kind === 'drill' && !onOre) return 'pas de gisement dessous';
+  return null;
 }
+
+/** Vrai si un bâtiment de ce type peut être posé avec son coin haut-gauche en (x, y). */
+export const canPlace = (type, x, y) => placementProblem(type, x, y) === null;
 
 /** Type de minerai le plus présent sous une zone. */
 function majorityOre(x, y, w, h) {
@@ -67,6 +85,7 @@ function createBuilding(type, x, y, dir) {
       b.item = null;          // { type, progress, enterDir, outDir, outIndex }
       b.shape = 'T';
       b.priority = def.priority ? ['F', 'L', 'R'] : null; // ordre des sorties (prioritaire)
+      b.filters = def.filter ? emptyFilters() : null;     // items de chaque sortie (filtre)
       b.next = 0;             // index de la prochaine sortie dans la rotation
       break;
     case 'drill':
@@ -100,22 +119,26 @@ export function placeBuilding(type, x, y, dir = RIGHT, props = {}) {
 
 function occupy(b) {
   game.buildings.push(b);
-  for (const [cx, cy] of footprint(b.x, b.y, b.w, b.h)) game.grid[cellIndex(cx, cy)] = b;
+  for (const layer of layersOf(b.type)) {
+    for (const [cx, cy] of footprint(b.x, b.y, b.w, b.h)) gridOf(layer)[cellIndex(cx, cy)] = b;
+  }
   return b;
 }
 
 /** Retire un bâtiment de la carte sans le détruire (pour le déplacer). */
 export function liftBuilding(b) {
   game.buildings.splice(game.buildings.indexOf(b), 1);
-  for (const [cx, cy] of footprint(b.x, b.y, b.w, b.h)) game.grid[cellIndex(cx, cy)] = null;
+  for (const layer of layersOf(b.type)) {
+    for (const [cx, cy] of footprint(b.x, b.y, b.w, b.h)) gridOf(layer)[cellIndex(cx, cy)] = null;
+  }
 }
 
 /**
  * Vide un bâtiment : plus d'item, de stock ni de fabrication en cours, comme s'il
- * venait d'être posé. Il garde sa place, sa direction, sa forme et ses priorités.
+ * venait d'être posé. Il garde sa place, sa direction, sa forme, ses priorités et ses filtres.
  */
 export function emptyBuilding(b) {
-  const keep = { shape: b.shape, priority: b.priority };
+  const keep = { shape: b.shape, priority: b.priority, filters: b.filters };
   Object.assign(b, createBuilding(b.type, b.x, b.y, b.dir));
   for (const [name, value] of Object.entries(keep)) if (value !== undefined) b[name] = value;
   b.stalled = false;

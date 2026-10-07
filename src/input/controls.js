@@ -5,8 +5,10 @@ import { hasInfoPanel } from '../data/buildings.js';
 import { ui, view } from '../state.js';
 import { buildingAt } from '../world/buildings.js';
 import { showCursorCell } from '../ui/hud.js';
-import { selectToolByNumber, setTool } from '../ui/toolbar.js';
-import { buildAt, eraseAt, extendBeltPath, priorityAction, rotateAction, shapeAction, startBeltPath } from './actions.js';
+import { selectToolByKey, selectToolByNumber, setTool, toggleLayer } from '../ui/toolbar.js';
+import {
+  buildAt, cancelBeltPlan, commitBeltPlan, eraseAt, extendBeltPlan, priorityAction, rotateAction, shapeAction, startBeltPlan,
+} from './actions.js';
 import {
   cancelPlacing, clearSelection, eraseSelection, extendSelectBox, finishSelectBox, placeGroupAt,
   rotatePlacing, startCopy, startMove, startSelectBox,
@@ -22,7 +24,7 @@ const keysDown = new Set();
  * Glisser en cours :
  *   { mode: 'pan', x, y }            déplacer la carte
  *   { mode: 'erase' }                effacer en glissant (clic droit)
- *   { mode: 'build', last, belt }    construire en glissant (tracé de tapis)
+ *   { mode: 'build', last }          construire en glissant (tracé de tapis : voir ui.beltPlan)
  *   { mode: 'select' }               encadrer des bâtiments (outil Sélection, ou Maj + glisser)
  *   { mode: 'place' }                le groupe déplacé ou copié vient d'être posé
  */
@@ -33,7 +35,10 @@ export function initControls(canvas, minimap) {
   canvas.addEventListener('pointerdown', (e) => onPointerDown(e, canvas));
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerup', () => endDrag(canvas));
-  canvas.addEventListener('pointercancel', () => endDrag(canvas));
+  canvas.addEventListener('pointercancel', () => {
+    cancelBeltPlan();
+    endDrag(canvas);
+  });
   canvas.addEventListener('pointerleave', () => { if (!drag) ui.hover = null; });
   canvas.addEventListener('wheel', onWheel, { passive: false });
 
@@ -53,7 +58,10 @@ function onPointerDown(e, canvas) {
   canvas.setPointerCapture(e.pointerId);
   const cell = cellFromEvent(e);
 
-  if (e.button === 2 && ui.placing) {
+  if (e.button === 2 && ui.beltPlan) {
+    cancelBeltPlan();
+    drag = null;
+  } else if (e.button === 2 && ui.placing) {
     cancelPlacing();
   } else if (e.button === 2) {
     eraseAt(cell);
@@ -72,9 +80,10 @@ function onPointerDown(e, canvas) {
     drag = { mode: 'pan', x: e.clientX, y: e.clientY, moved: 0, cell, click: true };
     canvas.classList.add('drag');
   } else if (ui.tool === 'belt') {
-    drag = { mode: 'build', last: cell, belt: startBeltPath(cell) };
+    startBeltPlan(cell);
+    drag = { mode: 'build', last: cell };
   } else {
-    drag = { mode: 'build', last: cell, belt: null };
+    drag = { mode: 'build', last: cell };
     if (ui.tool === 'erase') eraseAt(cell);
     else buildAt(cell);
   }
@@ -103,18 +112,19 @@ function onPointerMove(e) {
   }
   if (drag.mode === 'place') return;
   if (cell.x === drag.last.x && cell.y === drag.last.y) return;
-  if (ui.tool === 'belt') drag.belt = extendBeltPath(drag.last, cell, drag.belt);
+  if (ui.tool === 'belt') extendBeltPlan(cell);
   else if (ui.tool === 'erase') eraseAt(cell);
   drag.last = cell;
 }
 
 function endDrag(canvas) {
   if (drag?.mode === 'pan' && drag.click && drag.moved < 5) {
-    const target = buildingAt(drag.cell.x, drag.cell.y);
+    const target = buildingAt(drag.cell.x, drag.cell.y, ui.layer);
     ui.selected = target && hasInfoPanel(target) ? target : null;
     clearSelection();
   }
   if (drag?.mode === 'select') finishSelectBox();
+  if (drag?.mode === 'build') commitBeltPlan();
   drag = null;
   canvas.classList.remove('drag');
 }
@@ -152,6 +162,8 @@ function onKeyDown(e) {
   if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(key)) e.preventDefault();
   keysDown.add(key);
 
+  if (ui.beltPlan && key === 'escape') return cancelBeltPlan();
+
   // Groupe qui suit le curseur : R le tourne, Échap l'abandonne.
   if (ui.placing && (key === 'r' || key === 'escape')) {
     if (key === 'r') rotatePlacing();
@@ -174,9 +186,11 @@ function onKeyDown(e) {
     setTool('hand');
   }
   else if (key === 'm') toggleSound();
+  else if (key === 'u') toggleLayer();
   else if (key === '+' || key === '=') setZoom(view.zoom + 1);
   else if (key === '-' || key === '_') setZoom(view.zoom - 1);
   else if (/^[0-9]$/.test(key)) selectToolByNumber(Number(key));
+  else selectToolByKey(key);
 }
 
 /** Déplacement continu tant que WASD ou les flèches sont enfoncées. À appeler à chaque image. */

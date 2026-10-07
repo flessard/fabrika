@@ -6,6 +6,7 @@
 import { ui } from '../state.js';
 import { nextShapeId, shapeById } from '../data/splitterShapes.js';
 import { mergerShapeById, nextMergerShapeId } from '../data/mergerShapes.js';
+import { baseType, isTunnel, typeForTool } from '../data/buildings.js';
 import { buildingAt, canPlace } from '../world/buildings.js';
 import { splitterOptions } from '../sim/splitter.js';
 import { mergerOptions } from '../sim/merger.js';
@@ -25,6 +26,13 @@ const TOOLS = {
     next: nextShapeId,
     get preferred() { return ui.smartSplitterShape; },
     set preferred(id) { ui.smartSplitterShape = id; },
+  },
+  filter: {
+    options: splitterOptions,
+    shapeName: (id) => shapeById(id).name,
+    next: nextShapeId,
+    get preferred() { return ui.filterShape; },
+    set preferred(id) { ui.filterShape = id; },
   },
   merger: {
     options: mergerOptions,
@@ -48,17 +56,18 @@ let pick = { key: '', index: 0 };
  */
 export function shapeChoice(toolId, cell) {
   const tool = TOOLS[toolId];
-  const under = buildingAt(cell.x, cell.y);
-  if (under?.kind === 'belt') {
+  const under = buildingAt(cell.x, cell.y, ui.layer);
+  if (under?.kind === 'belt' && !isTunnel(under)) {
     const dir = under.dir;
-    const options = tool.options(cell.x, cell.y, dir, tool.preferred);
-    const key = `${toolId},${cell.x},${cell.y},${dir}`;
+    const options = tool.options(cell.x, cell.y, dir, tool.preferred, ui.layer);
+    const key = `${toolId},${ui.layer},${cell.x},${cell.y},${dir}`;
     if (pick.key !== key) pick = { key, index: 0 };
     const index = options.length ? pick.index % options.length : 0;
     const option = options[index];
     return { dir, shape: option ? option.id : tool.preferred, ok: !!option, onBelt: true, options, index };
   }
-  return { dir: ui.dir, shape: tool.preferred, ok: canPlace(toolId, cell.x, cell.y), onBelt: false, options: [], index: 0 };
+  const type = typeForTool(toolId, ui.layer);
+  return { dir: ui.dir, shape: tool.preferred, ok: !!type && canPlace(type, cell.x, cell.y), onBelt: false, options: [], index: 0 };
 }
 
 /** Retenir la forme choisie pour le prochain bâtiment du même type. */
@@ -67,12 +76,12 @@ export function rememberShape(toolId, shapeId) {
 }
 
 export function cycleShape(toolId) {
-  const hovered = ui.hover && buildingAt(ui.hover.x, ui.hover.y);
-  if (hovered?.kind === 'belt') pick.index++;
+  const hovered = ui.hover && buildingAt(ui.hover.x, ui.hover.y, ui.layer);
+  if (hovered?.kind === 'belt' && !isTunnel(hovered)) pick.index++;
   else TOOLS[toolId].preferred = TOOLS[toolId].next(TOOLS[toolId].preferred);
 }
 
 /** Forme suivante pour un splitter ou un groupeur déjà posé. */
 export function nextShapeFor(building) {
-  return TOOLS[building.type].next(building.shape);
+  return TOOLS[baseType(building.type)].next(building.shape);
 }

@@ -9,8 +9,11 @@
 // R tourne le groupe d'un quart de tour pendant qu'il suit le curseur.
 import { TILE } from '../config.js';
 import { turnRight } from '../core/grid.js';
+import { onLayer } from '../data/buildings.js';
 import { game, ui } from '../state.js';
-import { canPlace, emptyBuilding, liftBuilding, placeBuilding, putBackBuilding, removeBuilding } from '../world/buildings.js';
+import { emit } from '../core/events.js';
+import { BUILDINGS } from '../data/buildings.js';
+import { emptyBuilding, liftBuilding, placementProblem, placeBuilding, putBackBuilding, removeBuilding } from '../world/buildings.js';
 import { spawnPuff } from '../sim/particles.js';
 import { playSound } from '../audio/sounds.js';
 
@@ -33,9 +36,9 @@ export function selectBoxArea() {
   return { x, y, w: Math.abs(to.x - from.x) + 1, h: Math.abs(to.y - from.y) + 1 };
 }
 
-/** Tout ce qui touche la zone encadrée (sauf le dépôt). */
+/** Tout ce qui touche la zone encadrée sur la couche regardée (sauf le dépôt). */
 function buildingsIn(area) {
-  return game.buildings.filter((b) => b.kind !== 'hub' &&
+  return game.buildings.filter((b) => b.kind !== 'hub' && onLayer(b, ui.layer) &&
     b.x < area.x + area.w && b.x + b.w > area.x && b.y < area.y + area.h && b.y + b.h > area.y);
 }
 
@@ -88,7 +91,8 @@ function startPlacing(mode) {
   const x1 = Math.max(...group.map((b) => b.x + b.w)), y1 = Math.max(...group.map((b) => b.y + b.h));
   const parts = group.map((b) => ({
     type: b.type, kind: b.kind, w: b.w, h: b.h, dx: b.x - x0, dy: b.y - y0, dir: b.dir,
-    shape: b.shape, priority: b.priority && [...b.priority], b: mode === 'move' ? b : null,
+    shape: b.shape, priority: b.priority && [...b.priority], filters: b.filters && structuredClone(b.filters),
+    b: mode === 'move' ? b : null,
   }));
 
   if (mode === 'move') {
@@ -113,14 +117,15 @@ export function rotatePlacing() {
 
 /**
  * Où chaque pièce du groupe serait posée avec le curseur sur `cell`, et si elle rentre.
- * (x0, y0) : coin haut-gauche du groupe.
+ * (x0, y0) : coin haut-gauche du groupe. `problem` : pourquoi une pièce ne rentre pas.
  */
 export function placementAt(cell) {
   const p = ui.placing;
   const x0 = cell.x - Math.floor((p.w - 1) / 2), y0 = cell.y - Math.floor((p.h - 1) / 2);
   const spots = p.parts.map((part) => {
     const x = x0 + part.dx, y = y0 + part.dy;
-    return { part, x, y, ok: canPlace(part.type, x, y) };
+    const problem = placementProblem(part.type, x, y);
+    return { part, x, y, ok: !problem, problem };
   });
   return { x0, y0, spots, ok: spots.every((s) => s.ok) };
 }
@@ -130,6 +135,7 @@ export function placeGroupAt(cell) {
   const { spots, ok } = placementAt(cell);
   if (!ok) {
     playSound('deny');
+    emit('placement:denied');
     return;
   }
   const p = ui.placing;
@@ -160,10 +166,27 @@ export function cancelPlacing() {
   playSound('click');
 }
 
+/**
+ * Les raisons qui empêchent de poser le groupe, regroupées :
+ * [{ name: 'Foreuse', problem: 'pas de gisement dessous', count: 2 }, …], les plus fréquentes d'abord.
+ */
+export function placementProblems(spots) {
+  const groups = new Map();
+  for (const { part, problem } of spots) {
+    if (!problem) continue;
+    const name = BUILDINGS[part.type].name;
+    const key = `${name}|${problem}`;
+    if (!groups.has(key)) groups.set(key, { name, problem, count: 0 });
+    groups.get(key).count++;
+  }
+  return [...groups.values()].sort((a, b) => b.count - a.count);
+}
+
 function copiedProps(part) {
   const props = {};
   if (part.shape) props.shape = part.shape;
   if (part.priority) props.priority = [...part.priority];
+  if (part.filters) props.filters = structuredClone(part.filters);
   return props;
 }
 

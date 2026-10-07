@@ -3,8 +3,9 @@
 import { BELT_SPEED } from '../config.js';
 import { DIRS, cellIndex, inBounds, opposite } from '../core/grid.js';
 import { game } from '../state.js';
-import { SPLITTER_SHAPES, priorityOrder, splitterOutputs } from '../data/splitterShapes.js';
+import { SPLITTER_SHAPES, filterOutputs, priorityOrder, splitterOutputs } from '../data/splitterShapes.js';
 import { mergerInputs } from '../data/mergerShapes.js';
+import { inputLayer, isTunnel } from '../data/buildings.js';
 import { buildingAt } from '../world/buildings.js';
 import { isBuildable } from '../world/terrain.js';
 import { canEnter, pushItem, reservedForSomeoneElse, reserveEntry } from './transfer.js';
@@ -30,6 +31,9 @@ export function insertIntoSplitter(splitter, itemType, dir, from) {
  * Splitter prioritaire (`priority` défini) : l'item part dans la sortie n° 1 si elle a
  * de la place, sinon la n° 2, sinon la n° 3.
  *
+ * Filtre (`filters` défini) : comme un splitter normal, mais seulement vers les sorties
+ * qui listent cet item (sinon vers « le reste », voir filterOutputs).
+ *
  * Splitter normal : l'item avance jusqu'au centre, puis part vers la prochaine sortie de la rotation
  * qui peut le recevoir (les sorties pleines ou sans rien de branché sont sautées).
  * Tant que toutes les branches coulent, l'alternance est donc stricte ; quand une
@@ -54,10 +58,12 @@ export function stepSplitter(splitter, dt) {
       ? priorityOrder(splitter.dir, splitter.shape, splitter.priority).map((side) => outputs.indexOf(side))
       : outputs.map((_, k) => (splitter.next + k) % n);
 
+    const allowed = splitter.filters ? filterOutputs(splitter.dir, splitter.shape, splitter.filters, item.type) : outputs;
     let chosen = -1;
     for (const i of tryOrder) {
       if (chosen >= 0) break;
-      if (outputScore(splitter.x, splitter.y, outputs[i]) < 1) continue;
+      if (!allowed.includes(outputs[i])) continue;
+      if (outputScore(splitter.x, splitter.y, outputs[i], inputLayer(splitter)) < 1) continue;
       const [dx, dy] = DIRS[outputs[i]];
       if (canEnter(splitter.x + dx, splitter.y + dy, item.type, outputs[i], splitter)) chosen = i;
     }
@@ -90,19 +96,23 @@ export function stepSplitter(splitter, dt) {
  *    0 terrain libre
  *    1 déjà branché à quelque chose qui peut recevoir
  */
-export function outputScore(x, y, side) {
+export function outputScore(x, y, side, layer = 'surface') {
   const [dx, dy] = DIRS[side];
   const nx = x + dx, ny = y + dy;
   if (!inBounds(nx, ny)) return -1;
 
-  const neighbor = buildingAt(nx, ny);
+  const neighbor = buildingAt(nx, ny, layer);
   if (neighbor) {
+    // Un tunnel ne prend que par l'arrière, et seulement sur la couche d'où il reçoit
+    // (l'entrée en surface, la sortie au sous-sol).
+    if (isTunnel(neighbor)) return inputLayer(neighbor) === layer && neighbor.dir === side ? 1 : -1;
     if (neighbor.kind === 'belt') return neighbor.dir === opposite(side) ? -1 : 1;
     if (neighbor.kind === 'splitter') return neighbor.dir === side ? 1 : -1;
     if (neighbor.kind === 'merger') return mergerInputs(neighbor.dir, neighbor.shape).includes(opposite(side)) ? 1 : -1;
     return neighbor.kind === 'drill' ? -1 : 1;
   }
-  return isBuildable(game.map, cellIndex(nx, ny)) ? 0 : -1;
+  // Au sous-sol, toute case libre peut recevoir un tapis (même sous l'eau).
+  return layer === 'under' || isBuildable(game.map, cellIndex(nx, ny)) ? 0 : -1;
 }
 
 /**
@@ -110,10 +120,10 @@ export function outputScore(x, y, side) {
  * Les formes qui réutilisent des tapis déjà là passent en premier ; à égalité,
  * la forme préférée du joueur passe devant.
  */
-export function splitterOptions(x, y, dir, preferredShape) {
+export function splitterOptions(x, y, dir, preferredShape, layer = 'surface') {
   const options = [];
   for (const shape of SPLITTER_SHAPES) {
-    const scores = shape.outputs(dir).map((side) => outputScore(x, y, side));
+    const scores = shape.outputs(dir).map((side) => outputScore(x, y, side, layer));
     if (scores.every((s) => s >= 0)) {
       options.push({ id: shape.id, name: shape.name, score: scores.reduce((a, b) => a + b, 0) });
     }

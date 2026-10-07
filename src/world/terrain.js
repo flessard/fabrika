@@ -12,8 +12,17 @@ export const ORE = { NONE: 0, IRON: 1, COPPER: 2, COAL: 3 };
 export const ORE_ITEM = { [ORE.IRON]: 'fe_ore', [ORE.COPPER]: 'cu_ore', [ORE.COAL]: 'coal' };
 
 export const isLand = (map, i) => map.ground[i] <= GROUND.SAND;
-/** Les arbres et les roches bloquent la construction ; les buissons et les fleurs non. */
-export const isBuildable = (map, i) => isLand(map, i) && map.deco[i] !== DECO.TREE && map.deco[i] !== DECO.ROCK;
+/**
+ * Ce qui empêche de construire sur la case, ou null : l'eau, les arbres et les roches.
+ * Les buissons et les fleurs ne gênent pas.
+ */
+export function terrainProblem(map, i) {
+  if (!isLand(map, i)) return 'eau';
+  if (map.deco[i] === DECO.TREE) return 'arbre';
+  if (map.deco[i] === DECO.ROCK) return 'rocher';
+  return null;
+}
+export const isBuildable = (map, i) => terrainProblem(map, i) === null;
 
 /**
  * Génère un terrain à partir d'une graine.

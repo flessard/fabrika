@@ -1,7 +1,8 @@
 // Mini-carte : la carte entière à 2 pixels par case, les bâtiments, et le cadre de la caméra.
 import { TILE } from '../config.js';
 import { PALETTE as P } from '../data/palette.js';
-import { game, view } from '../state.js';
+import { game, ui, view } from '../state.js';
+import { isUnderground } from '../data/buildings.js';
 import { drawOn, rect } from './pen.js';
 import { bakeMinimapBase } from './terrainImage.js';
 
@@ -19,7 +20,10 @@ export function renderMinimap(ctx) {
   drawOn(ctx);
   ctx.drawImage(base, 0, 0);
   for (const b of game.buildings) {
-    rect(b.x * SCALE, b.y * SCALE, b.w * SCALE, b.h * SCALE, COLOR_BY_KIND[b.kind] ?? P.amber);
+    // Ce qui est souterrain n'apparaît qu'en vue du sous-sol.
+    if (isUnderground(b) && ui.layer !== 'under') continue;
+    const color = isUnderground(b) ? P.clay : COLOR_BY_KIND[b.kind] ?? P.amber;
+    rect(b.x * SCALE, b.y * SCALE, b.w * SCALE, b.h * SCALE, color);
   }
   ctx.strokeStyle = P.white;
   ctx.lineWidth = 1;

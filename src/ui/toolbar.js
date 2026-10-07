@@ -1,11 +1,11 @@
 // Palette d'outils en bas de l'écran.
 import { RIGHT, turnRight } from '../core/grid.js';
-import { TOOLS } from '../data/buildings.js';
+import { TOOLS, toolWorksOn } from '../data/buildings.js';
 import { PALETTE as P } from '../data/palette.js';
 import { ui } from '../state.js';
 import { playSound } from '../audio/sounds.js';
 import { currentCtx, makeCanvas, rect } from '../render/pen.js';
-import { drawBelt, drawMerger, drawSmartSplitter, drawSplitter } from '../render/sprites/belts.js';
+import { drawBelt, drawFilter, drawMerger, drawSmartSplitter, drawSplitter, drawTunnel, drawUnderBelt } from '../render/sprites/belts.js';
 import { machineSprite } from '../render/sprites/machines.js';
 import { cancelPlacing, clearSelection, rotatePlacing } from '../input/selection.js';
 
@@ -55,6 +55,20 @@ const ICONS = {
   splitter: () => scaled2(() => drawSplitter(0, 0, RIGHT, 'T', 0)),
   smartSplitter: () => scaled2(() => drawSmartSplitter(0, 0, RIGHT, 'YR', ['F', 'L', 'R'], 0)),
   merger: () => scaled2(() => drawMerger(0, 0, RIGHT, '+', 0)),
+  filter: () => scaled2(() => drawFilter(0, 0, RIGHT, 'T', { F: [], L: ['coal'], R: ['fe_ore'] }, 0)),
+  tunnel: () => scaled2(() => drawTunnel(0, 0, RIGHT, 'in', 0)),
+  layer: () => {
+    // Coupe du terrain : herbe, terre, et un tapis souterrain dedans
+    rect(2, 6, 28, 22, P.black);
+    rect(3, 7, 26, 4, P.leaf);
+    rect(3, 7, 26, 1, P.lime);
+    rect(3, 11, 26, 16, P.bark);
+    for (const [x, y] of [[6, 14], [22, 13], [12, 24], [26, 23]]) rect(x, y, 2, 1, P.soot);
+    scaled2(() => {
+      currentCtx().translate(0.5, 4.5);
+      drawUnderBelt(0, 0, RIGHT, [RIGHT, 2], 0);
+    });
+  },
 };
 
 /** Dessine un sprite de 16 px agrandi ×2 pour remplir l'icône. */
@@ -88,21 +102,47 @@ export function buildToolbar(canvas) {
   gameCanvas = canvas;
   const bar = document.getElementById('bar');
 
-  TOOLS.forEach((tool, i) => {
+  NUMBERED.forEach((tool, i) => { tool.number = (i + 1) % 10; });
+  for (const tool of TOOLS) {
     if (tool.separatorBefore) bar.append(separator());
-    const button = toolButton({ id: tool.id, label: tool.name, key: (i + 1) % 10, onClick: () => setTool(tool.id) });
+    const button = toolButton({ id: tool.id, label: tool.name, key: tool.key ?? tool.number, onClick: () => setTool(tool.id) });
     button.dataset.tool = tool.id;
     bar.append(button);
-  });
+  }
 
   bar.append(separator());
   bar.append(toolButton({ id: 'rotate', label: 'Tourner', key: 'R', onClick: () => {
     if (ui.placing) rotatePlacing();
     else ui.dir = turnRight(ui.dir);
   } }));
+  const layerButton = toolButton({ id: 'layer', label: 'Sous-sol', key: 'U', onClick: toggleLayer });
+  layerButton.setAttribute('aria-pressed', 'false');
+  bar.append(layerButton);
+}
+
+/**
+ * U : passe de la surface au sous-sol et inversement. Au sous-sol, la surface
+ * s'assombrit et seuls les outils qui y servent restent actifs.
+ */
+export function toggleLayer() {
+  playSound('click');
+  cancelPlacing();
+  clearSelection();
+  ui.selected = null;
+  ui.layer = ui.layer === 'surface' ? 'under' : 'surface';
+  document.body.classList.toggle('underground', ui.layer === 'under');
+  document.getElementById('tool-layer').setAttribute('aria-pressed', String(ui.layer === 'under'));
+  for (const button of document.querySelectorAll('.tool[data-tool]')) {
+    button.classList.toggle('unavailable', !toolWorksOn(button.dataset.tool, ui.layer));
+  }
+  if (!toolWorksOn(ui.tool, ui.layer)) setTool('hand');
 }
 
 export function setTool(id) {
+  if (!toolWorksOn(id, ui.layer)) {
+    playSound('deny');
+    return;
+  }
   if (ui.tool !== id) {
     playSound('click');
     // Changer d'outil abandonne le groupe en cours ; seul Sélection garde la sélection.
@@ -116,8 +156,19 @@ export function setTool(id) {
   gameCanvas.classList.toggle('build', id !== 'hand');
 }
 
-/** Touches 1 à 9, puis 0 pour le 10e outil. */
+/** Les outils qui ont un numéro (ceux qui n'ont pas leur propre lettre). */
+const NUMBERED = TOOLS.filter((tool) => !tool.key);
+
+/** Touches 1 à 9, puis 0 pour le 10e outil. Au sous-sol, seuls ceux qui y servent. */
 export function selectToolByNumber(n) {
-  const tool = TOOLS[(n + 9) % 10];
-  if (tool) setTool(tool.id);
+  const tool = NUMBERED[(n + 9) % 10];
+  if (tool && toolWorksOn(tool.id, ui.layer)) setTool(tool.id);
+}
+
+/** Choisit un outil par sa lettre (ex. T pour Tunnel). Retourne vrai s'il y en a un. */
+export function selectToolByKey(key) {
+  const tool = TOOLS.find((t) => t.key?.toLowerCase() === key);
+  if (!tool) return false;
+  if (toolWorksOn(tool.id, ui.layer)) setTool(tool.id);
+  return true;
 }

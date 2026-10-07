@@ -21,9 +21,8 @@ export function initSelectionMenu() {
 /** À appeler à chaque image : montre le menu tant qu'il y a une sélection. */
 export function updateSelectionMenu() {
   // Un bâtiment sélectionné peut avoir été effacé entre-temps (clic droit, Gomme).
-  if (ui.selection.some((b) => buildingAt(b.x, b.y) !== b)) {
-    ui.selection = ui.selection.filter((b) => buildingAt(b.x, b.y) === b);
-  }
+  const stillThere = (b) => buildingAt(b.x, b.y, ui.layer) === b;
+  if (!ui.selection.every(stillThere)) ui.selection = ui.selection.filter(stillThere);
   const group = ui.selection;
   if (!group.length || ui.placing) {
     menu.hidden = true;

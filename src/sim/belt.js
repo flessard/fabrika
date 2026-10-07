@@ -3,6 +3,7 @@ import { BELT_SPEED } from '../config.js';
 import { DIRS, inBounds, opposite } from '../core/grid.js';
 import { game } from '../state.js';
 import { splitterOutputs } from '../data/splitterShapes.js';
+import { inputLayer, isTunnel, onLayer, outputLayer } from '../data/buildings.js';
 import { buildingAt, outputCell } from '../world/buildings.js';
 import { canEnter, pushItem, reservedForSomeoneElse, reserveEntry } from './transfer.js';
 import { recordFlow } from './flow.js';
@@ -16,6 +17,7 @@ import { recordFlow } from './flow.js';
  */
 export function beltAccepts(belt, dir, from) {
   if (dir === opposite(belt.dir)) return false; // on n'entre pas à contre-sens
+  if (isTunnel(belt) && dir !== belt.dir) return false; // un tunnel ne prend que par l'arrière
 
   belt.requests[dir] = game.tick;
   if (belt.item) return false;
@@ -78,10 +80,13 @@ export function stepBelt(belt, dt) {
  *
  * `virtual` : un bâtiment pas encore posé (l'aperçu sous le curseur), ou une liste
  * (un groupe déplacé ou copié), traité comme s'il était déjà sur la carte. Sert à montrer la forme qu'auront les tapis.
+ *
+ * Seuls comptent les voisins de la couche où le tapis reçoit ses items.
  */
 export function beltArms(belt, virtual = null) {
-  const extra = virtual ? [].concat(virtual) : [];
-  const at = (x, y) => extra.find((v) => covers(v, x, y)) ?? buildingAt(x, y);
+  const layer = inputLayer(belt);
+  const extra = virtual ? [].concat(virtual).filter((v) => onLayer(v, layer)) : [];
+  const at = (x, y) => extra.find((v) => covers(v, x, y)) ?? buildingAt(x, y, layer);
   const arms = [belt.dir];
   let fed = false;
 
@@ -92,7 +97,7 @@ export function beltArms(belt, virtual = null) {
     if (!inBounds(nx, ny)) continue;
 
     const neighbor = at(nx, ny);
-    if (neighbor && feedsInto(neighbor, belt.x, belt.y, opposite(side))) {
+    if (neighbor && feedsInto(neighbor, belt.x, belt.y, opposite(side), layer)) {
       arms.push(side);
       fed = true;
     }
@@ -103,10 +108,11 @@ export function beltArms(belt, virtual = null) {
 }
 
 /**
- * Le bâtiment `b` envoie-t-il ses items dans la case (x, y) ?
+ * Le bâtiment `b` envoie-t-il ses items dans la case (x, y) de la couche `layer` ?
  * `towardCell` : la direction qui va de `b` vers cette case.
  */
-export function feedsInto(b, x, y, towardCell) {
+export function feedsInto(b, x, y, towardCell, layer = 'surface') {
+  if (outputLayer(b) !== layer) return false;
   switch (b.kind) {
     case 'hub': return false;
     case 'splitter': return splitterOutputs(b.dir, b.shape).includes(towardCell);

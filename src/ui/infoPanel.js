@@ -6,16 +6,17 @@
 // Une nouvelle machine de kind 'crafter' (data/buildings.js) a donc sa fiche sans rien ajouter.
 import { BELT_SPEED, TILE } from '../config.js';
 import { RIGHT, LEFT, opposite, turnLeft, turnRight } from '../core/grid.js';
-import { BUILDINGS, inputCapacity, outputCapacity } from '../data/buildings.js';
+import { BUILDINGS, inputCapacity, isUnderground, outputCapacity } from '../data/buildings.js';
 import { ITEMS } from '../data/items.js';
-import { priorityOrder, raisePriority, shapeById, splitterOutputs } from '../data/splitterShapes.js';
+import { filterFor, priorityOrder, raisePriority, shapeById, splitterOutputs, toggleFilter } from '../data/splitterShapes.js';
 import { mergerInputs, mergerShapeById } from '../data/mergerShapes.js';
 import { isConveyor } from '../sim/transfer.js';
 import { game, ui, view } from '../state.js';
 import { flowSummary } from '../sim/flow.js';
 import { productionRate } from '../sim/machines.js';
 import { makeCanvas } from '../render/pen.js';
-import { drawBelt, drawMerger, drawSmartSplitter, drawSplitter } from '../render/sprites/belts.js';
+import { playSound } from '../audio/sounds.js';
+import { beltColors, drawBelt, drawFilter, drawMerger, drawSmartSplitter, drawSplitter, drawTunnel, drawUnderBelt, filterKey } from '../render/sprites/belts.js';
 import { itemIconUrl } from '../render/sprites/items.js';
 import { machineSprite } from '../render/sprites/machines.js';
 
@@ -27,18 +28,58 @@ let shownFor = null;
 let parts = null;
 
 export function initInfoPanel() {
-  panel.addEventListener('pointerdown', (e) => e.stopPropagation());
-  // Boutons ▲ des priorités : un seul écouteur pour toute la fiche, car son contenu est redessiné.
-  panel.addEventListener('click', (e) => {
-    const button = e.target.closest('[data-raise]');
+  // Boutons des priorités (▲) et des filtres (icônes d'items) : un seul écouteur pour
+  // toute la fiche, car son contenu est redessiné. On réagit dès l'appui : les débits
+  // changent sans cesse et le bouton peut être redessiné avant le relâchement.
+  panel.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
     const b = shownFor;
-    if (!button || !b?.priority) return;
-    b.priority = raisePriority(b.priority, b.dir, b.shape, Number(button.dataset.raise));
+    const raise = e.target.closest('[data-raise]');
+    if (raise && b?.priority) b.priority = raisePriority(b.priority, b.dir, b.shape, Number(raise.dataset.raise));
+    const chip = e.target.closest('[data-filter-side]');
+    if (chip && b?.filters) {
+      toggleFilter(b.filters, b.dir, Number(chip.dataset.filterSide), chip.dataset.item);
+      playSound('click');
+      showChipTooltip(chip);
+    }
   });
+  // Info-bulle des icônes d'items du filtre : tout de suite, et elle reste même si la
+  // fiche se redessine sous la souris (elle vit en dehors de la fiche).
+  panel.addEventListener('pointermove', (e) => {
+    const chip = e.target.closest('[data-filter-side]');
+    if (chip) showChipTooltip(chip);
+    else tooltip.hidden = true;
+  });
+  panel.addEventListener('pointerleave', () => { tooltip.hidden = true; });
+}
+
+const tooltip = Object.assign(document.createElement('div'), { id: 'chipTooltip', className: 'panel', hidden: true });
+document.body.append(tooltip);
+
+/** Familles d'items, d'après leur forme (voir data/items.js). */
+const FAMILY = { ore: 'Minerai', ingot: 'Lingot', plate: 'Produit', wire: 'Produit' };
+/** « l'envoyer à gauche », « tout droit », « à droite ». */
+const toward = (dir, side) => ({ 'Tout droit': 'tout droit', Gauche: 'à gauche', Droite: 'à droite' })[sideName(dir, side)];
+
+/** Nom de l'item, sa famille, et ce que fera le clic, au-dessus de l'icône survolée. */
+function showChipTooltip(chip) {
+  const b = shownFor;
+  if (!b?.filters) return;
+  const type = chip.dataset.item, side = Number(chip.dataset.filterSide);
+  const chosen = filterFor(b.filters, b.dir, side).includes(type);
+  const item = ITEMS[type];
+  tooltip.innerHTML = `<b>${item.name}</b> <span class="ip-muted">· ${FAMILY[item.shape] ?? 'Item'}</span><br>`
+    + `<small>clic : ${chosen ? 'ne plus l\'envoyer' : 'l\'envoyer'} ${toward(b.dir, side)}</small>`;
+  tooltip.hidden = false;
+  const r = chip.getBoundingClientRect();
+  const w = tooltip.offsetWidth, h = tooltip.offsetHeight;
+  tooltip.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2))}px`;
+  tooltip.style.top = `${r.top - h - 6 < 8 ? r.bottom + 6 : r.top - h - 6}px`;
 }
 
 export function closeInfoPanel() {
   ui.selected = null;
+  tooltip.hidden = true;
 }
 
 /** À appeler à chaque image. */
@@ -47,6 +88,7 @@ export function updateInfoPanel() {
   if (!b || !game.buildings.includes(b)) {
     if (ui.selected) ui.selected = null;
     panel.hidden = true;
+    tooltip.hidden = true;
     shownFor = null;
     return;
   }
@@ -123,6 +165,28 @@ function describeConveyor(b) {
         <span class="ip-muted">${perMinute(flow.byOutput.get(side) ?? 0)} / min</span>
         ${rank > 0 ? `<button type="button" data-raise="${side}" title="Monter en priorité ${rank}">▲</button>` : '<span></span>'}
       </div>`).join('') });
+  } else if (b.filters) {
+    // Filtre : une rangée par sortie, avec une icône par item à allumer ou éteindre.
+    const sides = splitterOutputs(b.dir, b.shape);
+    sections.push({ label: 'Items par sortie', aside: 'sortie vide : le reste', html: sides.map((side) => {
+      const chosen = filterFor(b.filters, b.dir, side);
+      // Le nom de chaque item s'affiche au survol (voir showChipTooltip).
+      const chips = Object.keys(ITEMS).map((type) => `
+        <button type="button" class="ip-chip" data-filter-side="${side}" data-item="${type}"
+          aria-pressed="${chosen.includes(type)}" aria-label="${ITEMS[type].name}"><img class="ip-item" src="${itemIconUrl(type)}" alt=""></button>`).join('');
+      const names = chosen.length
+        ? chosen.map((type) => ITEMS[type].name).join(' · ')
+        : '<span class="ip-muted">Tout ce qui n\'est pas choisi ailleurs</span>';
+      return `
+        <div class="ip-filter">
+          <div class="ip-filter-head">
+            <span>${sideName(b.dir, side)}</span>
+            <span class="ip-muted">${perMinute(flow.byOutput.get(side) ?? 0)} / min</span>
+          </div>
+          <div class="ip-chips">${chips}</div>
+          <div class="ip-chosen">${names}</div>
+        </div>`;
+    }).join('') });
   } else if (b.kind === 'splitter') {
     const sides = splitterOutputs(b.dir, b.shape);
     sections.push({ label: 'Par sortie', html: `<div class="ip-row ip-wrap">${sides
@@ -190,13 +254,18 @@ function stockHtml(label, list, capacity) {
 const buildingIcons = new Map();
 function buildingIconUrl(b) {
   let key = b.type;
-  if (b.kind === 'splitter' || b.kind === 'merger') key = `${b.type}|${b.shape}|${b.priority?.join('') ?? ''}|${b.dir}`;
+  if (b.kind === 'splitter' || b.kind === 'merger') {
+    key = `${b.type}|${b.shape}|${b.priority?.join('') ?? ''}|${b.filters ? filterKey(b.filters) : ''}|${b.dir}`;
+  }
   if (!buildingIcons.has(key)) {
     let canvas;
-    if (b.kind === 'belt') canvas = makeCanvas(16, 16, () => drawBelt(0, 0, RIGHT, [RIGHT, LEFT], 0));
-    else if (b.priority) canvas = makeCanvas(16, 16, () => drawSmartSplitter(0, 0, b.dir, b.shape, b.priority, 0));
-    else if (b.kind === 'splitter') canvas = makeCanvas(16, 16, () => drawSplitter(0, 0, RIGHT, b.shape, 0));
-    else if (b.kind === 'merger') canvas = makeCanvas(16, 16, () => drawMerger(0, 0, RIGHT, b.shape, 0));
+    if (BUILDINGS[b.type].tunnel) canvas = makeCanvas(16, 16, () => drawTunnel(0, 0, RIGHT, BUILDINGS[b.type].tunnel, 0));
+    else if (b.type === 'underBelt') canvas = makeCanvas(16, 16, () => drawUnderBelt(0, 0, RIGHT, [RIGHT, LEFT], 0));
+    else if (b.kind === 'belt') canvas = makeCanvas(16, 16, () => drawBelt(0, 0, RIGHT, [RIGHT, LEFT], 0));
+    else if (b.filters) canvas = makeCanvas(16, 16, () => drawFilter(0, 0, b.dir, b.shape, b.filters, 0, beltColors(isUnderground(b))));
+    else if (b.priority) canvas = makeCanvas(16, 16, () => drawSmartSplitter(0, 0, b.dir, b.shape, b.priority, 0, beltColors(isUnderground(b))));
+    else if (b.kind === 'splitter') canvas = makeCanvas(16, 16, () => drawSplitter(0, 0, RIGHT, b.shape, 0, beltColors(isUnderground(b))));
+    else if (b.kind === 'merger') canvas = makeCanvas(16, 16, () => drawMerger(0, 0, RIGHT, b.shape, 0, beltColors(isUnderground(b))));
     else canvas = machineSprite(b.type);
     buildingIcons.set(key, canvas.toDataURL());
   }

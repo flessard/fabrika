@@ -8,7 +8,8 @@ import { TILE } from '../../config.js';
 import { PALETTE_RGB } from '../../data/palette.js';
 import { beltArms } from '../../sim/belt.js';
 import { makeCanvas } from '../pen.js';
-import { drawBelt, drawMerger, drawSmartSplitter, drawSplitter } from './belts.js';
+import { BUILDINGS, isUnderground } from '../../data/buildings.js';
+import { beltColors, drawBelt, drawFilter, drawMerger, drawSmartSplitter, drawSplitter, drawTunnel, drawUnderBelt, filterKey } from './belts.js';
 import { animationState, drawMachineBody } from './machines.js';
 
 /** Marge autour du bâtiment : la goulotte de sortie (4 px) et le contour (1 px). */
@@ -41,15 +42,23 @@ function lookOf(b) {
   const m = HIGHLIGHT_MARGIN;
   switch (b.kind) {
     case 'belt': {
+      const end = BUILDINGS[b.type].tunnel;
+      if (end) return { key: `tunnel|${b.dir}|${end}`, draw: () => drawTunnel(m, m, b.dir, end, 0) };
       const arms = beltArms(b);
-      return { key: `belt|${b.dir}|${[...arms].sort().join('')}`, draw: () => drawBelt(m, m, b.dir, arms, 0) };
+      const draw = b.type === 'underBelt' ? drawUnderBelt : drawBelt;
+      return { key: `${b.type}|${b.dir}|${[...arms].sort().join('')}`, draw: () => draw(m, m, b.dir, arms, 0) };
     }
-    case 'splitter':
+    case 'splitter': {
+      const colors = beltColors(isUnderground(b));
+      if (b.filters) {
+        return { key: `${b.type}|${b.dir}|${b.shape}|${filterKey(b.filters)}`, draw: () => drawFilter(m, m, b.dir, b.shape, b.filters, 0, colors) };
+      }
       return b.priority
-        ? { key: `smart|${b.dir}|${b.shape}|${b.priority.join('')}`, draw: () => drawSmartSplitter(m, m, b.dir, b.shape, b.priority, 0) }
-        : { key: `splitter|${b.dir}|${b.shape}`, draw: () => drawSplitter(m, m, b.dir, b.shape, 0) };
+        ? { key: `${b.type}|${b.dir}|${b.shape}|${b.priority.join('')}`, draw: () => drawSmartSplitter(m, m, b.dir, b.shape, b.priority, 0, colors) }
+        : { key: `${b.type}|${b.dir}|${b.shape}`, draw: () => drawSplitter(m, m, b.dir, b.shape, 0, colors) };
+    }
     case 'merger':
-      return { key: `merger|${b.dir}|${b.shape}`, draw: () => drawMerger(m, m, b.dir, b.shape, 0) };
+      return { key: `${b.type}|${b.dir}|${b.shape}`, draw: () => drawMerger(m, m, b.dir, b.shape, 0, beltColors(isUnderground(b))) };
     default:
       return { key: `${b.type}|${b.dir}`, draw: () => drawMachineBody(b, animationState(b, 0), m, m, { shadow: false }) };
   }
