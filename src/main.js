@@ -22,6 +22,7 @@ import { initHud, showMapInfo, showToast, updateGoalDisplay } from './ui/hud.js'
 import { updateHint } from './ui/hint.js';
 import { createPerfMeter } from './ui/perf.js';
 import { buildToolbar, setTool } from './ui/toolbar.js';
+import { playSound } from './audio/sounds.js';
 
 const params = new URLSearchParams(location.search);
 const canvas = document.getElementById('game');
@@ -48,7 +49,12 @@ on('map:new', () => {
 
 on('item:delivered', () => {
   updateGoalDisplay();
-  if (checkGoalJustReached()) showToast('Commande livrée !', 'Le tableau 2 arrive dans la prochaine version.');
+  if (checkGoalJustReached()) {
+    playSound('goal');
+    showToast('Commande livrée !', 'Le tableau 2 arrive dans la prochaine version.');
+  } else {
+    playSound('deliver');
+  }
 });
 
 // ---------- Démarrage ----------

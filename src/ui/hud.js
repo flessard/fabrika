@@ -4,11 +4,14 @@ import { ITEMS } from '../data/items.js';
 import { game } from '../state.js';
 import { GOAL, goalProgress } from '../sim/goal.js';
 import { itemSprite } from '../render/sprites/items.js';
+import { isMuted, toggleMute } from '../audio/sounds.js';
 
 const $ = (id) => document.getElementById(id);
 
 export function initHud({ onNewMap }) {
   $('reroll').addEventListener('click', onNewMap);
+  $('sound').addEventListener('click', toggleSound);
+  showSoundState();
   $('goalIcon').getContext('2d').drawImage(itemSprite(GOAL.item), 0, 0);
   $('goalLabel').textContent = `Livrer ${GOAL.count} ${ITEMS[GOAL.item].plural}`;
 }
@@ -25,6 +28,17 @@ export function updateGoalDisplay() {
 
 export function showCursorCell(cell) {
   $('coords').textContent = cell ? `x ${cell.x} · y ${cell.y}` : `${MAP_W} × ${MAP_H} cases`;
+}
+
+export function toggleSound() {
+  toggleMute();
+  showSoundState();
+}
+
+function showSoundState() {
+  const button = $('sound');
+  button.textContent = isMuted() ? 'Son : non' : 'Son : oui';
+  button.setAttribute('aria-pressed', String(!isMuted()));
 }
 
 let toastTimer;

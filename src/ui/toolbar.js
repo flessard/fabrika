@@ -3,6 +3,7 @@ import { RIGHT, turnRight } from '../core/grid.js';
 import { TOOLS } from '../data/buildings.js';
 import { PALETTE as P } from '../data/palette.js';
 import { ui } from '../state.js';
+import { playSound } from '../audio/sounds.js';
 import { currentCtx, makeCanvas, rect } from '../render/pen.js';
 import { drawBelt, drawSplitter } from '../render/sprites/belts.js';
 import { machineSprite } from '../render/sprites/machines.js';
@@ -81,6 +82,7 @@ export function buildToolbar(canvas) {
 }
 
 export function setTool(id) {
+  if (ui.tool !== id) playSound('click');
   ui.tool = id;
   for (const button of document.querySelectorAll('.tool[data-tool]')) {
     button.setAttribute('aria-pressed', String(button.dataset.tool === id));

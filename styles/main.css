@@ -87,6 +87,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .barbg i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .2s steps(4); }
 #goalNum { font-size: 14px; font-variant-numeric: tabular-nums; color: var(--accent); }
 
+.meta-buttons { display: flex; gap: 4px; }
 .meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--mute); }
 .help { font-size: 11px; color: var(--mute); line-height: 1.5; border-top: 2px solid var(--panel-hi); padding-top: 6px; }
 .help kbd { font-family: var(--ui); color: var(--ink); background: var(--void); padding: 0 4px; }

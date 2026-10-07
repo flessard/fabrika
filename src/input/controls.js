@@ -6,6 +6,8 @@ import { showCursorCell } from '../ui/hud.js';
 import { selectToolByNumber, setTool } from '../ui/toolbar.js';
 import { buildAt, eraseAt, extendBeltPath, rotateAction, shapeAction, startBeltPath } from './actions.js';
 import { cellFromEvent, clampCamera, panBy, setZoom } from './camera.js';
+import { unlockAudio } from '../audio/sounds.js';
+import { toggleSound } from '../ui/hud.js';
 
 /** Touches enfoncées en ce moment (en minuscules ; ' ' pour la barre d'espace). */
 const keysDown = new Set();
@@ -28,6 +30,9 @@ export function initControls(canvas, minimap) {
   canvas.addEventListener('wheel', onWheel, { passive: false });
 
   addEventListener('keydown', onKeyDown);
+  // Le navigateur n'autorise le son qu'après une première interaction.
+  addEventListener('pointerdown', unlockAudio);
+  addEventListener('keydown', unlockAudio);
   addEventListener('keyup', (e) => keysDown.delete(keyName(e)));
   addEventListener('blur', () => keysDown.clear());
 
@@ -113,6 +118,7 @@ function onKeyDown(e) {
   if (key === 'r') rotateAction(e.shiftKey);
   else if (key === 'f') shapeAction();
   else if (key === 'escape') setTool('hand');
+  else if (key === 'm') toggleSound();
   else if (key === '+' || key === '=') setZoom(view.zoom + 1);
   else if (key === '-' || key === '_') setZoom(view.zoom - 1);
   else if (/^[1-9]$/.test(key)) selectToolByNumber(Number(key));
