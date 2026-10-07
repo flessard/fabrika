@@ -20,9 +20,11 @@ import { centerOn, initCamera, resizeView, setResizeHandler } from './input/came
 import { applyKeyboardPan, initControls } from './input/controls.js';
 import { initHud, showMapInfo, showToast, updateGoalDisplay } from './ui/hud.js';
 import { updateHint } from './ui/hint.js';
+import { closeInfoPanel, initInfoPanel, updateInfoPanel } from './ui/infoPanel.js';
 import { createPerfMeter } from './ui/perf.js';
 import { buildToolbar, setTool } from './ui/toolbar.js';
 import { playSound } from './audio/sounds.js';
+import { updateAmbience } from './audio/ambience.js';
 
 const params = new URLSearchParams(location.search);
 const canvas = document.getElementById('game');
@@ -38,6 +40,7 @@ setResizeHandler(renderer.resize);
 // ---------- Réactions aux événements du jeu ----------
 
 on('map:new', () => {
+  closeInfoPanel();
   if (params.has('stress')) fillWithBeltLoops();
   renderer.rebuildTerrain();
   rebuildMinimapBase();
@@ -47,20 +50,23 @@ on('map:new', () => {
   centerOn(game.spawn.x, game.spawn.y);
 });
 
-on('item:delivered', () => {
+on('item:delivered', (at) => {
   updateGoalDisplay();
   if (checkGoalJustReached()) {
     playSound('goal');
     showToast('Commande livrée !', 'Le tableau 2 arrive dans la prochaine version.');
   } else {
-    playSound('deliver');
+    playSound('deliver', at);
   }
 });
+
+on('press:hit', (at) => playSound('thump', at));
 
 // ---------- Démarrage ----------
 
 initHud({ onNewMap: () => startNewMap(randomSeed()) });
 buildToolbar(canvas);
+initInfoPanel();
 initControls(canvas, minimapCanvas);
 addEventListener('resize', resizeView);
 
@@ -95,6 +101,8 @@ function frame(now) {
 
   if (frameCount++ % 4 === 0) renderMinimap(minimapCtx);
   updateHint();
+  updateInfoPanel();
+  updateAmbience();
 
   requestAnimationFrame(frame);
 }

@@ -1,12 +1,10 @@
 // Bulle d'aide au-dessus de la palette : infos sur la machine survolée,
 // ou formes possibles du splitter qu'on s'apprête à poser.
-import { BUILDINGS } from '../data/buildings.js';
+import { BUILDINGS, outputCapacity } from '../data/buildings.js';
 import { ITEMS } from '../data/items.js';
-import { MACHINE_OUTPUT_SLOTS } from '../config.js';
-import { shapeById } from '../data/splitterShapes.js';
 import { ui } from '../state.js';
 import { buildingAt } from '../world/buildings.js';
-import { splitterChoice } from '../input/splitterPicker.js';
+import { hasShapes, shapeChoice, shapeName } from '../input/shapePicker.js';
 
 const hintEl = document.getElementById('hint');
 let shown = '';
@@ -22,7 +20,7 @@ export function updateHint() {
 function hintText() {
   if (!ui.hover) return '';
   if (ui.tool === 'hand') return machineHint(buildingAt(ui.hover.x, ui.hover.y));
-  if (ui.tool === 'splitter') return splitterHint(splitterChoice(ui.hover));
+  if (hasShapes(ui.tool)) return shapeHint(ui.tool, shapeChoice(ui.tool, ui.hover));
   return '';
 }
 
@@ -39,17 +37,20 @@ function machineHint(b) {
   const busy = b.kind === 'drill' ? b.working : !!b.current;
   let state = 'en attente';
   if (busy) state = `${Math.floor(b.progress * 100)} %`;
-  else if (b.outputs.length >= MACHINE_OUTPUT_SLOTS) state = 'sortie bloquée';
+  else if (b.outputs.length >= outputCapacity(b)) state = 'sortie bloquée';
 
   return `<b>${def.name}</b> · ${seconds} s par item · ${makes} · ${state}`;
 }
 
-function splitterHint(choice) {
-  const name = shapeById(choice.shape).name;
+const TOOL_NAMES = { splitter: 'Splitter', smartSplitter: 'Prioritaire', merger: 'Groupeur' };
+
+function shapeHint(toolId, choice) {
+  let label = `${TOOL_NAMES[toolId]} <b>${shapeName(toolId, choice.shape)}</b>`;
+  if (toolId === 'smartSplitter') label += ' · <b>P</b> priorités';
   if (!choice.onBelt) {
-    return `Splitter <b>${name}</b> · <b>F</b> forme · <b>R</b> tourner · pose-le sur un tapis pour des suggestions`;
+    return `${label} · <b>F</b> forme · <b>R</b> tourner · pose-le sur un tapis pour des suggestions`;
   }
-  if (!choice.ok) return 'Aucune forme ne rentre ici : les sorties sont bloquées';
+  if (!choice.ok) return 'Aucune forme ne rentre ici : la sortie est bloquée';
   const count = choice.options.length;
-  return `Splitter <b>${name}</b> · forme ${choice.index + 1}/${count} possible${count > 1 ? 's' : ''} ici · <b>R</b> pour changer`;
+  return `${label} · forme ${choice.index + 1}/${count} possible${count > 1 ? 's' : ''} ici · <b>R</b> pour changer`;
 }

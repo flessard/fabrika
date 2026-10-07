@@ -8,6 +8,7 @@ import { updateParticles } from './particles.js';
 const STEP_BY_KIND = {
   belt: stepBelt,
   splitter: stepSplitter,
+  merger: stepBelt, // une fois entré, l'item avance comme sur un tapis
   drill: stepDrill,
   crafter: stepCrafter,
   hub: stepHub,

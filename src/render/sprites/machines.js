@@ -1,6 +1,7 @@
 // Dessin des machines (foreuse, four, presse) et du dépôt.
 // Chaque machine = un sprite fixe (fabriqué une fois) + des parties animées par-dessus.
-import { MACHINE_OUTPUT_SLOTS, TILE } from '../../config.js';
+import { TILE } from '../../config.js';
+import { outputCapacity } from '../../data/buildings.js';
 import { DOWN, LEFT, RIGHT } from '../../core/grid.js';
 import { hash2 } from '../../core/random.js';
 import { PALETTE as P } from '../../data/palette.js';
@@ -222,7 +223,7 @@ function drawOutputChute(b, sx, sy) {
  * jaune clignotante quand les items finis ne peuvent pas sortir.
  */
 export function drawProgressBar(b, sx, sy, time) {
-  const blocked = b.outputs.length >= MACHINE_OUTPUT_SLOTS;
+  const blocked = b.outputs.length >= outputCapacity(b);
   const busy = b.kind === 'drill' ? b.working : !!b.current;
   if (!busy && !blocked) return;
 

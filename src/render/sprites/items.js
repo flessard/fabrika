@@ -47,6 +47,14 @@ export const ITEM_SIZE = 7;
 
 const cache = {};
 
+const urlCache = {};
+
+/** Image de l'item pour l'interface HTML (une balise <img>). */
+export function itemIconUrl(itemType) {
+  urlCache[itemType] ??= itemSprite(itemType).toDataURL();
+  return urlCache[itemType];
+}
+
 /** Sprite (canevas) d'un type d'item. Fabriqué une seule fois, puis réutilisé. */
 export function itemSprite(itemType) {
   if (cache[itemType]) return cache[itemType];

@@ -5,7 +5,7 @@ import { PALETTE as P } from '../data/palette.js';
 import { ui } from '../state.js';
 import { playSound } from '../audio/sounds.js';
 import { currentCtx, makeCanvas, rect } from '../render/pen.js';
-import { drawBelt, drawSplitter } from '../render/sprites/belts.js';
+import { drawBelt, drawMerger, drawSmartSplitter, drawSplitter } from '../render/sprites/belts.js';
 import { machineSprite } from '../render/sprites/machines.js';
 
 let gameCanvas = null;
@@ -37,6 +37,8 @@ const ICONS = {
   },
   belt: () => scaled2(() => drawBelt(0, 0, RIGHT, [RIGHT, 2], 0)),
   splitter: () => scaled2(() => drawSplitter(0, 0, RIGHT, 'T', 0)),
+  smartSplitter: () => scaled2(() => drawSmartSplitter(0, 0, RIGHT, 'YR', ['F', 'L', 'R'], 0)),
+  merger: () => scaled2(() => drawMerger(0, 0, RIGHT, '+', 0)),
 };
 
 /** Dessine un sprite de 16 px agrandi ×2 pour remplir l'icône. */

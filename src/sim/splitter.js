@@ -1,48 +1,86 @@
 // Splitter : une entrée à l'arrière, 2 ou 3 sorties selon sa forme.
 // Les items partent dans les sorties à tour de rôle (ex. gauche, tout droit, droite, gauche…).
-import { BELT_SPEED, SPLITTER_JAM_TIMEOUT } from '../config.js';
+import { BELT_SPEED } from '../config.js';
 import { DIRS, cellIndex, inBounds, opposite } from '../core/grid.js';
 import { game } from '../state.js';
-import { SPLITTER_SHAPES, splitterOutputs } from '../data/splitterShapes.js';
+import { SPLITTER_SHAPES, priorityOrder, splitterOutputs } from '../data/splitterShapes.js';
+import { mergerInputs } from '../data/mergerShapes.js';
 import { buildingAt } from '../world/buildings.js';
 import { isBuildable } from '../world/terrain.js';
-import { pushItem } from './transfer.js';
+import { canEnter, pushItem, reservedForSomeoneElse, reserveEntry } from './transfer.js';
+import { recordFlow } from './flow.js';
 
-/** L'item doit arriver par l'arrière, donc en se déplaçant dans la direction du splitter. */
-export function insertIntoSplitter(splitter, itemType, dir) {
+/**
+ * Le splitter reçoit un item par l'arrière seulement, donc en se déplaçant dans sa
+ * direction. Comme un tapis, il peut garder un item au centre quand tout est plein.
+ */
+export function splitterAccepts(splitter, dir, from) {
   if (splitter.item || dir !== splitter.dir) return false;
-  splitter.item = { type: itemType, progress: 0, enterDir: dir, outDir: null, outIndex: 0, wait: 0 };
+  return splitter.incoming?.from === from || !reservedForSomeoneElse(splitter, from);
+}
+
+export function insertIntoSplitter(splitter, itemType, dir, from) {
+  if (!splitterAccepts(splitter, dir, from)) return false;
+  splitter.incoming = null;
+  splitter.item = { type: itemType, progress: 0, enterDir: dir, outDir: null, outIndex: 0 };
   return true;
 }
 
+/**
+ * Splitter prioritaire (`priority` défini) : l'item part dans la sortie n° 1 si elle a
+ * de la place, sinon la n° 2, sinon la n° 3.
+ *
+ * Splitter normal : l'item avance jusqu'au centre, puis part vers la prochaine sortie de la rotation
+ * qui peut le recevoir (les sorties pleines ou sans rien de branché sont sautées).
+ * Tant que toutes les branches coulent, l'alternance est donc stricte ; quand une
+ * branche est pleine, les items continuent dans les autres. Si tout est plein,
+ * l'item attend au centre du splitter.
+ */
 export function stepSplitter(splitter, dt) {
   const item = splitter.item;
+  splitter.stalled = false;
   if (!item) return;
-  item.progress = Math.min(1, item.progress + dt * BELT_SPEED);
 
   const outputs = splitterOutputs(splitter.dir, splitter.shape);
   const n = outputs.length;
 
-  // Au centre, l'item choisit sa sortie : la prochaine dans la rotation,
-  // en sautant celles où rien n'est branché.
-  if (item.progress >= 0.5 && item.outDir === null) {
-    let index = splitter.next % n;
-    for (let k = 0; k < n && outputScore(splitter.x, splitter.y, outputs[index]) < 1; k++) index = (index + 1) % n;
-    item.outDir = outputs[index];
-    item.outIndex = index;
-    item.wait = 0;
+  if (item.outDir === null) {
+    item.progress = Math.min(0.5, item.progress + dt * BELT_SPEED);
+    if (item.progress < 0.5) return;
+
+    // Ordre d'essai des sorties : par priorité (splitter prioritaire),
+    // sinon à tour de rôle en partant de la prochaine.
+    const tryOrder = splitter.priority
+      ? priorityOrder(splitter.dir, splitter.shape, splitter.priority).map((side) => outputs.indexOf(side))
+      : outputs.map((_, k) => (splitter.next + k) % n);
+
+    let chosen = -1;
+    for (const i of tryOrder) {
+      if (chosen >= 0) break;
+      if (outputScore(splitter.x, splitter.y, outputs[i]) < 1) continue;
+      const [dx, dy] = DIRS[outputs[i]];
+      if (canEnter(splitter.x + dx, splitter.y + dy, item.type, outputs[i], splitter)) chosen = i;
+    }
+    if (chosen < 0) {
+      splitter.stalled = true;
+      return;
+    }
+    const [dx, dy] = DIRS[outputs[chosen]];
+    reserveEntry(splitter.x + dx, splitter.y + dy, splitter);
+    item.outDir = outputs[chosen];
+    item.outIndex = chosen;
   }
+
+  item.progress = Math.min(1, item.progress + dt * BELT_SPEED);
   if (item.progress < 1) return;
 
   const [dx, dy] = DIRS[item.outDir];
-  if (pushItem(splitter.x + dx, splitter.y + dy, item.type, item.outDir)) {
+  if (pushItem(splitter.x + dx, splitter.y + dy, item.type, item.outDir, splitter)) {
     splitter.item = null;
     splitter.next = (item.outIndex + 1) % n;
-  } else if ((item.wait += dt) > SPLITTER_JAM_TIMEOUT) {
-    // Sortie bloquée trop longtemps : l'item revient au centre et passe à la suivante.
-    splitter.next = (item.outIndex + 1) % n;
-    item.outDir = null;
-    item.progress = 0.5;
+    recordFlow(splitter, item.type, item.outDir);
+  } else {
+    splitter.stalled = true;
   }
 }
 
@@ -61,6 +99,7 @@ export function outputScore(x, y, side) {
   if (neighbor) {
     if (neighbor.kind === 'belt') return neighbor.dir === opposite(side) ? -1 : 1;
     if (neighbor.kind === 'splitter') return neighbor.dir === side ? 1 : -1;
+    if (neighbor.kind === 'merger') return mergerInputs(neighbor.dir, neighbor.shape).includes(opposite(side)) ? 1 : -1;
     return neighbor.kind === 'drill' ? -1 : 1;
   }
   return isBuildable(game.map, cellIndex(nx, ny)) ? 0 : -1;

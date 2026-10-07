@@ -32,7 +32,7 @@
     </div>
     <div class="help">
       Glisse pour te déplacer · <kbd>WASD</kbd> / flèches · <kbd>+</kbd> <kbd>−</kbd> zoom<br>
-      <kbd>R</kbd> tourner · <kbd>F</kbd> forme du splitter · <kbd>M</kbd> son · clic droit efface · glisse un tapis pour le tracer
+      <kbd>R</kbd> tourner · <kbd>F</kbd> forme · <kbd>P</kbd> priorités · <kbd>M</kbd> son · clic droit efface · glisse un tapis pour le tracer
     </div>
   </div>
 
@@ -45,6 +45,9 @@
 
   <!-- Palette d'outils, remplie par src/ui/toolbar.js. -->
   <div id="bar" class="panel" role="toolbar" aria-label="Outils"></div>
+
+  <!-- Fiche du bâtiment cliqué (voir src/ui/infoPanel.js). -->
+  <div id="infoPanel" class="panel" hidden></div>
 
   <div id="toast" class="panel" hidden></div>
   <div id="hint" class="panel" hidden></div>

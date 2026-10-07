@@ -18,6 +18,9 @@
   color-scheme: dark;
 }
 
+/* L'attribut hidden doit toujours cacher, même un élément en display: grid ou flex. */
+[hidden] { display: none !important; }
+
 html,
 body {
   height: 100%;
@@ -174,3 +177,70 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .tool { width: 52px; }
   .tool span { font-size: 10px; }
 }
+
+/* ---------- Fiche d'un bâtiment ---------- */
+
+#infoPanel {
+  --arrow-x: 50%;
+  position: fixed;
+  width: 248px;
+  padding: 10px 12px 12px;
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+  z-index: 5;
+}
+/* Flèche qui pointe vers le bâtiment : en bas de la fiche, ou en haut si la fiche est dessous. */
+#infoPanel::after,
+#infoPanel::before {
+  content: "";
+  position: absolute;
+  left: var(--arrow-x);
+  transform: translateX(-50%);
+  border: 8px solid transparent;
+}
+#infoPanel::before { top: 100%; border-top-color: var(--void); border-width: 10px; }
+#infoPanel::after { top: calc(100% - 3px); border-top-color: var(--panel-hi); }
+#infoPanel.below::before { top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: var(--void); }
+#infoPanel.below::after { top: auto; bottom: calc(100% - 3px); border-top-color: transparent; border-bottom-color: var(--panel-hi); }
+
+.ip-head { display: grid; grid-template-columns: 32px 1fr auto; gap: 8px; align-items: center; }
+.ip-building { width: 32px; height: 32px; image-rendering: pixelated; }
+.ip-title { display: grid; gap: 2px; min-width: 0; }
+.ip-title b { font-size: 16px; color: var(--accent); }
+.ip-status { font-size: 11px; }
+.ip-status::before { content: "■ "; }
+.ip-status.ok { color: var(--ok); }
+.ip-status.warn { color: var(--accent); }
+.ip-status.idle { color: var(--mute); }
+.ip-close { padding: 0 7px; font-size: 16px; line-height: 20px; }
+
+.ip-sections { display: grid; gap: 8px; }
+.ip-section { display: grid; gap: 4px; border-top: 2px solid var(--panel-hi); padding-top: 8px; }
+.ip-label { color: var(--mute); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; display: flex; justify-content: space-between; gap: 8px; }
+.ip-aside { text-transform: none; letter-spacing: 0; }
+.ip-muted { color: var(--mute); }
+.ip-sep { color: var(--mute); padding: 0 3px; }
+.ip-item { width: 14px; height: 14px; image-rendering: pixelated; vertical-align: middle; }
+.ip-row { display: flex; align-items: center; gap: 3px; min-height: 16px; }
+.ip-wrap { flex-wrap: wrap; }
+.ip-bar { height: 8px; background: var(--void); border: 1px solid var(--line); }
+.ip-bar i { display: block; height: 100%; background: var(--ok); }
+.ip-gauge { grid-column: 1 / -1; height: 4px; background: var(--void); }
+.ip-gauge i { display: block; height: 100%; background: var(--line); }
+
+.ip-stock { display: grid; grid-template-columns: 52px 1fr auto; gap: 2px 8px; align-items: center; }
+.ip-stock + .ip-stock { margin-top: 4px; }
+.ip-count { font-variant-numeric: tabular-nums; }
+.ip-count.full { color: var(--accent); }
+
+.ip-rate { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.ip-rate b { font-size: 14px; font-variant-numeric: tabular-nums; }
+
+/* Priorités du splitter prioritaire */
+.ip-prio { display: grid; grid-template-columns: 18px 1fr auto 26px; gap: 6px; align-items: center; }
+.ip-prio b { text-align: center; background: var(--void); }
+.ip-prio .rank-1 { color: #fee761; }
+.ip-prio .rank-2 { color: var(--ink); }
+.ip-prio .rank-3 { color: var(--mute); }
+.ip-prio button { padding: 0 4px; font-size: 11px; line-height: 16px; }

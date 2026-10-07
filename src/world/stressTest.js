@@ -38,7 +38,7 @@ export function fillWithBeltLoops() {
       if (!cells.every(([x, y]) => canPlace('belt', x, y))) continue;
       cells.forEach(([x, y, dir], i) => {
         const belt = placeBuilding('belt', x, y, dir);
-        if (i % 2 === 0) belt.item = { type: i % 4 ? 'cu_ore' : 'fe_plate', progress: 0, enterDir: dir };
+        if (i % 2 === 0) belt.item = { type: i % 4 ? 'cu_ore' : 'fe_plate', progress: 0, enterDir: dir, committed: false };
       });
       count += cells.length;
     }

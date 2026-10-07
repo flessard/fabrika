@@ -1,12 +1,14 @@
 // Souris, trackpad, tactile et clavier → actions du jeu.
 import { MAP_H, MAP_W, PAN_SPEED, TILE } from '../config.js';
 import { inBounds } from '../core/grid.js';
+import { hasInfoPanel } from '../data/buildings.js';
 import { ui, view } from '../state.js';
+import { buildingAt } from '../world/buildings.js';
 import { showCursorCell } from '../ui/hud.js';
 import { selectToolByNumber, setTool } from '../ui/toolbar.js';
-import { buildAt, eraseAt, extendBeltPath, rotateAction, shapeAction, startBeltPath } from './actions.js';
+import { buildAt, eraseAt, extendBeltPath, priorityAction, rotateAction, shapeAction, startBeltPath } from './actions.js';
 import { cellFromEvent, clampCamera, panBy, setZoom } from './camera.js';
-import { unlockAudio } from '../audio/sounds.js';
+import { unlockAudio } from '../audio/engine.js';
 import { toggleSound } from '../ui/hud.js';
 
 /** Touches enfoncées en ce moment (en minuscules ; ' ' pour la barre d'espace). */
@@ -49,7 +51,8 @@ function onPointerDown(e, canvas) {
     eraseAt(cell);
     drag = { mode: 'erase' };
   } else if (e.button === 1 || ui.tool === 'hand' || keysDown.has(' ')) {
-    drag = { mode: 'pan', x: e.clientX, y: e.clientY };
+    // Un clic sans glisser avec l'outil Déplacer ouvre la fiche d'une machine (voir endDrag).
+    drag = { mode: 'pan', x: e.clientX, y: e.clientY, moved: 0, cell, click: e.button === 0 && ui.tool === 'hand' };
     canvas.classList.add('drag');
   } else if (ui.tool === 'belt') {
     drag = { mode: 'build', last: cell, belt: startBeltPath(cell) };
@@ -67,6 +70,7 @@ function onPointerMove(e) {
   if (!drag) return;
 
   if (drag.mode === 'pan') {
+    drag.moved += Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y);
     panBy(-(e.clientX - drag.x) / view.zoom, -(e.clientY - drag.y) / view.zoom);
     drag.x = e.clientX;
     drag.y = e.clientY;
@@ -83,6 +87,10 @@ function onPointerMove(e) {
 }
 
 function endDrag(canvas) {
+  if (drag?.mode === 'pan' && drag.click && drag.moved < 5) {
+    const target = buildingAt(drag.cell.x, drag.cell.y);
+    ui.selected = target && hasInfoPanel(target) ? target : null;
+  }
   drag = null;
   canvas.classList.remove('drag');
 }
@@ -117,7 +125,11 @@ function onKeyDown(e) {
 
   if (key === 'r') rotateAction(e.shiftKey);
   else if (key === 'f') shapeAction();
-  else if (key === 'escape') setTool('hand');
+  else if (key === 'p') priorityAction();
+  else if (key === 'escape') {
+    ui.selected = null;
+    setTool('hand');
+  }
   else if (key === 'm') toggleSound();
   else if (key === '+' || key === '=') setZoom(view.zoom + 1);
   else if (key === '-' || key === '_') setZoom(view.zoom - 1);

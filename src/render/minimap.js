@@ -6,7 +6,7 @@ import { drawOn, rect } from './pen.js';
 import { bakeMinimapBase } from './terrainImage.js';
 
 const SCALE = 2;
-const COLOR_BY_KIND = { belt: P.silver, splitter: P.silver, hub: P.rose };
+const COLOR_BY_KIND = { belt: P.silver, splitter: P.silver, merger: P.silver, hub: P.rose };
 
 let base = null;
 

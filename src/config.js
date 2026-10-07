@@ -17,11 +17,6 @@ export const SIM_DT = 1 / 60;
 
 /** Vitesse des tapis, en cases par seconde. */
 export const BELT_SPEED = 2.4;
-/** Nombre d'items qu'une machine garde en attente à l'entrée et à la sortie. */
-export const MACHINE_INPUT_SLOTS = 3;
-export const MACHINE_OUTPUT_SLOTS = 2;
-/** Secondes avant qu'un splitter abandonne une sortie bloquée et passe à la suivante. */
-export const SPLITTER_JAM_TIMEOUT = 1.5;
 
 /** Zoom entier : 1 pixel de jeu = N pixels à l'écran. */
 export const ZOOM_MIN = 2;

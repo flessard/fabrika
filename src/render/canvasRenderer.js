@@ -6,10 +6,11 @@ import { MAP_PADDING, TILE } from '../config.js';
 import { PALETTE as P } from '../data/palette.js';
 import { game, ui, view } from '../state.js';
 import { beltArms } from '../sim/belt.js';
+import { isConveyor } from '../sim/transfer.js';
 import { currentCtx, drawOn, rect, withAlpha } from './pen.js';
 import { bakeTerrain } from './terrainImage.js';
-import { cameraOrigin, carriedItemPosition, cursorPreview, isVisible, visibleCells, waterSparkles } from './scene.js';
-import { beltFrame, drawBelt, drawSplitter } from './sprites/belts.js';
+import { cameraOrigin, carriedItemPosition, conveyorFrame, selectionOutline, cursorPreview, isVisible, visibleCells, waterSparkles } from './scene.js';
+import { beltFrame, drawBelt, drawMerger, drawMergerBase, drawMergerLid, drawSmartSplitter, drawSplitter } from './sprites/belts.js';
 import { ITEM_SIZE, itemSprite } from './sprites/items.js';
 import { drawMachine } from './sprites/machines.js';
 
@@ -42,19 +43,29 @@ export function createCanvasRenderer(canvas) {
       for (const [x, y] of waterSparkles(cells, time)) rect(x - ox, y - oy, 2, 1, P.white);
       if (ui.tool !== 'hand') drawGrid(cells, ox, oy);
 
+      // Aperçu calculé d'abord : il peut changer la forme des tapis voisins.
+      const preview = cursorPreview(ui.hover, time);
+      const armsOf = (b) => preview?.affected?.get(b) ?? beltArms(b);
+
       const visible = game.buildings.filter((b) => isVisible(b, ox, oy));
       for (const b of visible) {
-        if (b.kind === 'belt') drawBelt(b.x * TILE - ox, b.y * TILE - oy, b.dir, beltArms(b), frame);
-        else if (b.kind === 'splitter') drawSplitter(b.x * TILE - ox, b.y * TILE - oy, b.dir, b.shape, frame);
+        if (b.kind === 'belt') drawBelt(b.x * TILE - ox, b.y * TILE - oy, b.dir, armsOf(b), conveyorFrame(b, frame));
+        else if (b.kind === 'splitter' && b.priority) drawSmartSplitter(b.x * TILE - ox, b.y * TILE - oy, b.dir, b.shape, b.priority, conveyorFrame(b, frame));
+        else if (b.kind === 'splitter') drawSplitter(b.x * TILE - ox, b.y * TILE - oy, b.dir, b.shape, conveyorFrame(b, frame));
+        else if (b.kind === 'merger') drawMergerBase(b.x * TILE - ox, b.y * TILE - oy, b.dir, b.shape, conveyorFrame(b, frame));
       }
       for (const b of visible) if (b.item) drawCarriedItem(b, ox, oy);
+      // Le couvercle des groupeurs passe par-dessus les items, qui disparaissent dessous.
+      for (const b of visible) if (b.kind === 'merger') drawMergerLid(b.x * TILE - ox, b.y * TILE - oy, b.dir, b.shape);
 
       // Les machines du haut d'abord, pour que celles du bas passent devant.
-      const machines = visible.filter((b) => b.kind !== 'belt' && b.kind !== 'splitter').sort((a, b) => a.y - b.y);
+      const machines = visible.filter((b) => !isConveyor(b)).sort((a, b) => a.y - b.y);
       for (const b of machines) drawMachine(b, b.x * TILE - ox, b.y * TILE - oy, time);
 
       drawParticles(ox, oy);
-      drawCursor(cursorPreview(ui.hover, time), ox, oy, time);
+      const selected = selectionOutline();
+      if (selected) strokeOutline(selected, ox, oy);
+      drawCursor(preview, ox, oy, time);
     },
   };
 }
@@ -95,10 +106,16 @@ function drawCursor(preview, ox, oy, time) {
     const sx = ghost.x * TILE - ox, sy = ghost.y * TILE - oy;
     withAlpha(0.6, () => {
       if (ghost.kind === 'belt') drawBelt(sx, sy, ghost.dir, ghost.arms, beltFrame(time));
+      else if (ghost.kind === 'splitter' && ghost.priority) drawSmartSplitter(sx, sy, ghost.dir, ghost.shape, ghost.priority, beltFrame(time));
       else if (ghost.kind === 'splitter') drawSplitter(sx, sy, ghost.dir, ghost.shape, beltFrame(time));
+      else if (ghost.kind === 'merger') drawMerger(sx, sy, ghost.dir, ghost.shape, beltFrame(time));
       else drawMachine(ghost.building, ghost.building.x * TILE - ox, ghost.building.y * TILE - oy, time, { ghost: true });
     });
   }
+  strokeOutline(outline, ox, oy);
+}
+
+function strokeOutline(outline, ox, oy) {
   const ctx = currentCtx();
   ctx.strokeStyle = outline.color;
   ctx.lineWidth = 1;

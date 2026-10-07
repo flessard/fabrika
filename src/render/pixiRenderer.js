@@ -7,14 +7,16 @@
 // Calques, du fond vers l'avant :
 //   terrain → eau et grille → tapis → items → machines → effets → curseur
 import { Application, CanvasSource, Container, Graphics, Sprite, Texture } from 'pixi.js';
-import { MACHINE_OUTPUT_SLOTS, MAP_PADDING, TILE } from '../config.js';
+import { MAP_PADDING, TILE } from '../config.js';
+import { outputCapacity } from '../data/buildings.js';
 import { PALETTE as P } from '../data/palette.js';
 import { game, ui, view } from '../state.js';
 import { beltArms } from '../sim/belt.js';
+import { isConveyor } from '../sim/transfer.js';
 import { makeCanvas } from './pen.js';
 import { bakeTerrain } from './terrainImage.js';
-import { cameraOrigin, carriedItemPosition, cursorPreview, isVisible, visibleCells, waterSparkles } from './scene.js';
-import { beltFrame, drawBelt, drawSplitter } from './sprites/belts.js';
+import { cameraOrigin, carriedItemPosition, conveyorFrame, selectionOutline, cursorPreview, isVisible, visibleCells, waterSparkles } from './scene.js';
+import { beltFrame, drawBelt, drawMerger, drawMergerBase, drawMergerLid, drawSmartSplitter, drawSplitter } from './sprites/belts.js';
 import { ITEM_SIZE, itemSprite } from './sprites/items.js';
 import { animationState, drawMachineBody } from './sprites/machines.js';
 
@@ -48,6 +50,7 @@ export async function createPixiRenderer(canvas) {
   const belts = new SpritePool();
   const itemShadows = new SpritePool();
   const items = new SpritePool();
+  const lids = new SpritePool();         // couvercles des groupeurs, par-dessus les items
   const machines = new SpritePool();
   const effects = new Graphics();        // barres de progression, fumée, étincelles
   const icons = new SpritePool();
@@ -55,7 +58,7 @@ export async function createPixiRenderer(canvas) {
   const cursor = new Graphics();
 
   world.addChild(
-    terrain, overlay, belts.layer, itemShadows.layer, items.layer,
+    terrain, overlay, belts.layer, itemShadows.layer, items.layer, lids.layer,
     machines.layer, effects, icons.layer, ghost, cursor,
   );
 
@@ -70,6 +73,18 @@ export async function createPixiRenderer(canvas) {
 
   const splitterTexture = (dir, shape, frame) =>
     textures.get(`splitter|${dir}|${shape}|${frame}`, TILE, TILE, () => drawSplitter(0, 0, dir, shape, frame));
+
+  const smartSplitterTexture = (dir, shape, priority, frame) =>
+    textures.get(`smart|${dir}|${shape}|${priority.join('')}|${frame}`, TILE, TILE, () => drawSmartSplitter(0, 0, dir, shape, priority, frame));
+
+  const mergerTexture = (dir, shape, frame) =>
+    textures.get(`merger|${dir}|${shape}|${frame}`, TILE, TILE, () => drawMergerBase(0, 0, dir, shape, frame));
+
+  const mergerLidTexture = (dir, shape) =>
+    textures.get(`merger-lid|${dir}|${shape}`, TILE, TILE, () => drawMergerLid(0, 0, dir, shape));
+
+  const mergerGhostTexture = (dir, shape, frame) =>
+    textures.get(`merger-ghost|${dir}|${shape}|${frame}`, TILE, TILE, () => drawMerger(0, 0, dir, shape, frame));
 
   const itemTexture = (type) => textures.get(`item|${type}`, ITEM_SIZE, ITEM_SIZE, (ctx) => ctx.drawImage(itemSprite(type), 0, 0));
 
@@ -93,7 +108,7 @@ export async function createPixiRenderer(canvas) {
   }
 
   function drawProgressBars(b, time) {
-    const blocked = b.outputs.length >= MACHINE_OUTPUT_SLOTS;
+    const blocked = b.outputs.length >= outputCapacity(b);
     const busy = b.kind === 'drill' ? b.working : !!b.current;
     if (!busy && !blocked) return;
 
@@ -129,17 +144,25 @@ export async function createPixiRenderer(canvas) {
   function drawCursor(preview, time) {
     cursor.clear();
     ghost.visible = false;
+    const selected = selectionOutline();
+    if (selected) strokeOutline(selected);
     if (!preview) return;
 
     const { ghost: g, outline } = preview;
     if (g) {
       if (g.kind === 'belt') setGhost(beltTexture(g.dir, g.arms, beltFrame(time)), g.x * TILE, g.y * TILE);
+      else if (g.kind === 'splitter' && g.priority) setGhost(smartSplitterTexture(g.dir, g.shape, g.priority, beltFrame(time)), g.x * TILE, g.y * TILE);
       else if (g.kind === 'splitter') setGhost(splitterTexture(g.dir, g.shape, beltFrame(time)), g.x * TILE, g.y * TILE);
+      else if (g.kind === 'merger') setGhost(mergerGhostTexture(g.dir, g.shape, beltFrame(time)), g.x * TILE, g.y * TILE);
       else {
         const b = g.building;
         setGhost(machineTexture(b, animationState(b, time), false), b.x * TILE - MACHINE_MARGIN, b.y * TILE - MACHINE_MARGIN);
       }
     }
+    strokeOutline(outline);
+  }
+
+  function strokeOutline(outline) {
     cursor
       .rect(outline.x * TILE + 0.5, outline.y * TILE + 0.5, outline.w * TILE - 1, outline.h * TILE - 1)
       .stroke({ width: 1, color: outline.color });
@@ -173,14 +196,22 @@ export async function createPixiRenderer(canvas) {
       const cells = visibleCells(ox, oy);
 
       drawOverlay(cells, time);
-      for (const pool of [belts, itemShadows, items, machines, icons]) pool.begin();
+      for (const pool of [belts, itemShadows, items, lids, machines, icons]) pool.begin();
       effects.clear();
+
+      // Aperçu calculé d'abord : il peut changer la forme des tapis voisins.
+      const preview = cursorPreview(ui.hover, time);
+      const armsOf = (b) => preview?.affected?.get(b) ?? beltArms(b);
 
       const visible = game.buildings.filter((b) => isVisible(b, ox, oy));
       for (const b of visible) {
-        if (b.kind === 'belt') belts.next(beltTexture(b.dir, beltArms(b), frame), b.x * TILE, b.y * TILE);
-        else if (b.kind === 'splitter') belts.next(splitterTexture(b.dir, b.shape, frame), b.x * TILE, b.y * TILE);
-        else continue;
+        if (b.kind === 'belt') belts.next(beltTexture(b.dir, armsOf(b), conveyorFrame(b, frame)), b.x * TILE, b.y * TILE);
+        else if (b.kind === 'splitter' && b.priority) belts.next(smartSplitterTexture(b.dir, b.shape, b.priority, conveyorFrame(b, frame)), b.x * TILE, b.y * TILE);
+        else if (b.kind === 'splitter') belts.next(splitterTexture(b.dir, b.shape, conveyorFrame(b, frame)), b.x * TILE, b.y * TILE);
+        else if (b.kind === 'merger') {
+          belts.next(mergerTexture(b.dir, b.shape, conveyorFrame(b, frame)), b.x * TILE, b.y * TILE);
+          lids.next(mergerLidTexture(b.dir, b.shape), b.x * TILE, b.y * TILE);
+        } else continue;
         if (b.item) {
           const [px, py] = carriedItemPosition(b);
           const sx = Math.round(px - 3), sy = Math.round(py - 3);
@@ -190,7 +221,7 @@ export async function createPixiRenderer(canvas) {
       }
 
       // Les machines du haut d'abord, pour que celles du bas passent devant.
-      const sorted = visible.filter((b) => b.kind !== 'belt' && b.kind !== 'splitter').sort((a, b) => a.y - b.y);
+      const sorted = visible.filter((b) => !isConveyor(b)).sort((a, b) => a.y - b.y);
       for (const b of sorted) {
         machines.next(machineTexture(b, animationState(b, time), true), b.x * TILE - MACHINE_MARGIN, b.y * TILE - MACHINE_MARGIN);
         if (b.kind === 'hub') {
@@ -201,8 +232,8 @@ export async function createPixiRenderer(canvas) {
       }
 
       drawParticles();
-      for (const pool of [belts, itemShadows, items, machines, icons]) pool.end();
-      drawCursor(cursorPreview(ui.hover, time), time);
+      for (const pool of [belts, itemShadows, items, lids, machines, icons]) pool.end();
+      drawCursor(preview, time);
 
       app.renderer.render(app.stage);
     },

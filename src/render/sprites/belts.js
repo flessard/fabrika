@@ -2,7 +2,8 @@
 import { BELT_SPEED, TILE } from '../../config.js';
 import { DIRS, opposite } from '../../core/grid.js';
 import { PALETTE as P } from '../../data/palette.js';
-import { splitterOutputs } from '../../data/splitterShapes.js';
+import { priorityOrder, splitterOutputs } from '../../data/splitterShapes.js';
+import { mergerInputs } from '../../data/mergerShapes.js';
 import { rect, rotatedRect, withAlpha } from '../pen.js';
 
 /**
@@ -83,4 +84,78 @@ export function drawSplitter(sx, sy, dir, shapeId, frame) {
     rotatedRect(sx, sy, side, 12, 6, 1, 4, P.yellow);
     rotatedRect(sx, sy, side, 13, 7, 1, 2, P.yellow);
   }
+}
+
+/**
+ * Groupeur, partie du dessous : un bras de tapis par entrée (lamelles vers le centre)
+ * et un bras de sortie devant.
+ */
+export function drawMergerBase(sx, sy, dir, shapeId, frame) {
+  const inputs = mergerInputs(dir, shapeId);
+  drawBelt(sx, sy, dir, [...inputs, dir], frame, [dir]);
+}
+
+/**
+ * Groupeur, couvercle : un boîtier fermé dessiné par-dessus les items, qui
+ * disparaissent dessous en le traversant. Flèches cyan qui rentrent, flèche jaune qui sort.
+ */
+export function drawMergerLid(sx, sy, dir, shapeId) {
+  rect(sx + 2, sy + 2, 12, 12, P.black);
+  rect(sx + 3, sy + 3, 10, 10, P.ocean);
+  rect(sx + 3, sy + 3, 10, 1, P.sky);
+  rect(sx + 3, sy + 12, 10, 1, P.night);
+  for (const [x, y] of [[4, 4], [11, 4], [4, 11], [11, 11]]) rect(sx + x, sy + y, 1, 1, P.cyan);
+  // Fente centrale
+  rect(sx + 6, sy + 6, 4, 4, P.night);
+  rect(sx + 7, sy + 7, 2, 2, P.black);
+
+  for (const side of mergerInputs(dir, shapeId)) {
+    rotatedRect(sx, sy, side, 12, 7, 1, 2, P.cyan);
+    rotatedRect(sx, sy, side, 13, 6, 1, 4, P.cyan);
+  }
+  rotatedRect(sx, sy, dir, 13, 6, 1, 4, P.yellow);
+  rotatedRect(sx, sy, dir, 14, 7, 1, 2, P.yellow);
+}
+
+/** Groupeur complet (icônes, aperçu sous le curseur). */
+export function drawMerger(sx, sy, dir, shapeId, frame) {
+  drawMergerBase(sx, sy, dir, shapeId, frame);
+  drawMergerLid(sx, sy, dir, shapeId);
+}
+
+// ---------- Splitter prioritaire ----------
+
+/** Petits chiffres 3 × 5 pour numéroter les sorties. */
+const DIGITS = {
+  1: ['.#.', '##.', '.#.', '.#.', '###'],
+  2: ['##.', '..#', '.#.', '#..', '###'],
+  3: ['##.', '..#', '.#.', '..#', '##.'],
+};
+const RANK_COLORS = [P.yellow, P.cream, P.silver];
+/** Coin du chiffre sur le bras de chaque côté (droite, bas, gauche, haut), toujours à l'endroit. */
+const DIGIT_SPOT = [[12, 5], [6, 11], [1, 5], [6, 0]];
+
+function drawDigit(sx, sy, n, color) {
+  DIGITS[n].forEach((row, y) => [...row].forEach((ch, x) => { if (ch === '#') rect(sx + x, sy + y, 1, 1, color); }));
+}
+
+/**
+ * Splitter prioritaire : boîtier violet, et chaque sortie porte son numéro
+ * de priorité (1 en jaune, 2 en crème, 3 en gris).
+ */
+export function drawSmartSplitter(sx, sy, dir, shapeId, priority, frame) {
+  const outputs = splitterOutputs(dir, shapeId);
+  drawBelt(sx, sy, dir, [...outputs, opposite(dir)], frame, outputs);
+
+  rect(sx + 4, sy + 4, 8, 8, P.black);
+  rect(sx + 5, sy + 5, 6, 6, P.plum);
+  rect(sx + 5, sy + 5, 6, 1, P.rose);
+  rect(sx + 5, sy + 10, 6, 1, P.night);
+  rect(sx + 7, sy + 7, 2, 2, P.yellow);
+
+  priorityOrder(dir, shapeId, priority).forEach((side, rank) => {
+    const [x, y] = DIGIT_SPOT[side];
+    rect(sx + x - 1, sy + y - 1, 5, 7, P.black);
+    drawDigit(sx + x, sy + y, rank + 1, RANK_COLORS[rank]);
+  });
 }

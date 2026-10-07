@@ -39,6 +39,13 @@ export const ui = {
   dir: 0,
   /** Forme du prochain splitter posé (voir data/splitterShapes.js). */
   splitterShape: 'T',
+  /** Forme et priorités du prochain splitter prioritaire posé. */
+  smartSplitterShape: 'YR',
+  smartPriority: ['F', 'L', 'R'],
+  /** Forme du prochain groupeur posé (voir data/mergerShapes.js). */
+  mergerShape: 'T',
   /** Case sous le curseur, ou null. */
   hover: null,
+  /** Bâtiment dont la fiche est ouverte, ou null. */
+  selected: null,
 };

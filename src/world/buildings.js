@@ -49,15 +49,24 @@ function majorityOre(x, y, w, h) {
 function createBuilding(type, x, y, dir) {
   const def = BUILDINGS[type];
   const b = { type, kind: def.kind, x, y, w: def.w, h: def.h, dir };
+  b.flow = [];              // items sortis récemment (voir sim/flow.js)
+  b.placedAt = game.tick;
   switch (def.kind) {
     case 'belt':
       b.item = null;          // item transporté : { type, progress, enterDir }
       b.lastInput = -1;       // direction du dernier item accepté (jonctions)
       b.requests = [-9, -9, -9, -9]; // dernier tick où chaque côté a voulu entrer
       break;
-    case 'splitter':
-      b.item = null;          // { type, progress, enterDir, outDir, outIndex, wait }
+    case 'merger':
+      b.item = null;
       b.shape = 'T';
+      b.next = 0;             // index de l'entrée dont c'est le tour
+      b.requests = [-9, -9, -9, -9]; // dernier tick où chaque côté a voulu entrer
+      break;
+    case 'splitter':
+      b.item = null;          // { type, progress, enterDir, outDir, outIndex }
+      b.shape = 'T';
+      b.priority = def.priority ? ['F', 'L', 'R'] : null; // ordre des sorties (prioritaire)
       b.next = 0;             // index de la prochaine sortie dans la rotation
       break;
     case 'drill':
@@ -71,6 +80,7 @@ function createBuilding(type, x, y, dir) {
       b.inputs = [];
       b.outputs = [];
       b.current = null;       // item en fabrication
+      b.currentInput = null;  // item reçu qui est en train d'être transformé
       b.progress = 0;
       b.working = false;
       b.anim = 0;

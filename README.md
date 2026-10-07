@@ -39,9 +39,13 @@ chaque résultat devient une texture réutilisée.
 |---|---|
 | Se déplacer sur la carte | glisser (outil Déplacer), WASD / flèches, trackpad |
 | Zoom | `+` / `−`, molette |
-| Choisir un outil | `1` à `7` |
+| Choisir un outil | `1` à `9` |
 | Tourner | `R` |
-| Forme du splitter (T, Y droite, Y gauche, Croix) | `F` (ou `R` quand il est posé sur un tapis) |
+| Forme du splitter, du prioritaire ou du groupeur (T, Y droite, Y gauche, Croix) | `F` (ou `R` quand il est posé sur un tapis) |
+| Ordre des priorités du splitter prioritaire | `P`, ou ▲ dans sa fiche |
+| Ouvrir la fiche d'un bâtiment (stock, cadence, débit) | clic avec l'outil Déplacer |
+| Fermer la fiche | `Échap` ou × |
+| Couper le son | `M` |
 | Effacer | clic droit ou Gomme |
 
 ## Organisation du code
@@ -125,6 +129,11 @@ La simulation la prend en charge sans autre changement.
 
 - Carte de 64 × 48 cases générée procéduralement (lacs, arbres, gisements de fer, cuivre, charbon)
 - Tapis qui se raccordent automatiquement (droit, coin, T, croix) et qui alternent les entrées aux jonctions
-- Splitters à plusieurs formes, avec rotation stricte des sorties
-- Foreuse, Four, Presse avec barre de progression
+- Aperçu sous le curseur qui montre les raccords avant de poser
+- Splitters à plusieurs formes (alternance stricte), splitters prioritaires (1, 2, 3)
+  et groupeurs (2 ou 3 entrées, à tour de rôle)
+- Files d'items centrées : un item par case, les tapis bloqués s'arrêtent
+- Foreuse, Four, Presse avec stock interne et barre de progression
+- Fiche de chaque bâtiment : état, stock, cadence réelle et maximale, débit des tapis
+- Sons rétro générés par le code, avec son spatial (plus fort près des usines)
 - Objectif de livraison au dépôt

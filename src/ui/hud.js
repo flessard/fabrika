@@ -4,7 +4,7 @@ import { ITEMS } from '../data/items.js';
 import { game } from '../state.js';
 import { GOAL, goalProgress } from '../sim/goal.js';
 import { itemSprite } from '../render/sprites/items.js';
-import { isMuted, toggleMute } from '../audio/sounds.js';
+import { isMuted, toggleMute } from '../audio/engine.js';
 
 const $ = (id) => document.getElementById(id);
 
