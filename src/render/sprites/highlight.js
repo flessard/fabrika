@@ -60,7 +60,7 @@ function lookOf(b) {
     case 'merger':
       return { key: `${b.type}|${b.dir}|${b.shape}`, draw: () => drawMerger(m, m, b.dir, b.shape, 0, beltColors(isUnderground(b))) };
     default:
-      return { key: `${b.type}|${b.dir}`, draw: () => drawMachineBody(b, animationState(b, 0), m, m, { shadow: false }) };
+      return { key: `${b.type}|${b.dir}|${b.outputOpen ? 1 : 0}`, draw: () => drawMachineBody(b, animationState(b, 0), m, m, { shadow: false }) };
   }
 }
 

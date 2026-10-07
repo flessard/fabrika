@@ -3,7 +3,7 @@
 //
 // Ordre : terrain → eau → grille → tapis → items → machines → particules
 //   → (vue du sous-sol : voile sombre, tapis souterrains et tunnels, leurs items) → curseur.
-import { MAP_PADDING, TILE } from '../config.js';
+import { MAP_H, MAP_PADDING, MAP_W, TILE } from '../config.js';
 import { BUILDINGS, isUnderground } from '../data/buildings.js';
 import { PALETTE as P } from '../data/palette.js';
 import { game, ui, view } from '../state.js';
@@ -11,6 +11,8 @@ import { beltArms } from '../sim/belt.js';
 import { isConveyor } from '../sim/transfer.js';
 import { currentCtx, drawOn, rect, withAlpha } from './pen.js';
 import { bakeTerrain } from './terrainImage.js';
+import { bakeFog } from './fogImage.js';
+import { fogVersion } from '../world/fog.js';
 import { cameraOrigin, carriedItemPosition, conveyorFrame, machinePorts, selectionOutline, selectionOverlay, cursorPreview, isVisible, visibleCells, waterSparkles } from './scene.js';
 import {
   beltColors, beltFrame, drawBelt, drawFilter, drawMerger, drawMergerBase, drawMergerLid, drawSmartSplitter, drawSplitter,
@@ -24,6 +26,7 @@ import { DOCK_SIZE, PORT_SIZE, drawDock, drawPort } from './sprites/ports.js';
 export function createCanvasRenderer(canvas) {
   const ctx = canvas.getContext('2d');
   let terrainImage = null;
+  let fogImage = null, fogDrawn = -1;
 
   return {
     name: 'Canvas 2D',
@@ -96,6 +99,13 @@ export function createCanvasRenderer(canvas) {
         withAlpha(0.8, () => rect(0, 0, view.width, view.height, P.soot));
         drawConveyors(conveyors.filter((b) => isUnderground(b) || BUILDINGS[b.type].tunnel));
       }
+
+      // Brouillard : ce qui reste à découvrir (redessiné seulement quand ça change).
+      if (fogDrawn !== fogVersion) {
+        fogImage = bakeFog(4);
+        fogDrawn = fogVersion;
+      }
+      ctx.drawImage(fogImage, -ox, -oy, MAP_W * TILE, MAP_H * TILE);
 
       const selected = selectionOutline();
       if (selected) strokeOutline(selected, ox, oy);

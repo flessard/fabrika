@@ -51,7 +51,7 @@ export function canEnter(x, y, itemType, dir, from) {
 /** Réserve un tapis, un splitter ou un groupeur pour l'item que `from` va y envoyer. */
 export function reserveEntry(x, y, from) {
   const target = receiverAt(x, y, from);
-  if (target && isConveyor(target)) target.incoming = { from, tick: game.tick };
+  if (target && isConveyor(target)) target.incoming = { from: from.id, tick: game.tick };
 }
 
 /** Le bâtiment qui recevrait en (x, y) ce que `from` envoie, ou null. */
@@ -65,12 +65,13 @@ function receiverAt(x, y, from) {
 export const isConveyor = (b) => b.kind === 'belt' || b.kind === 'splitter' || b.kind === 'merger';
 
 /**
- * Une réservation compte tant que celui qui l'a faite est en route.
+ * Une réservation (`incoming.from` : l'identifiant de celui qui arrive) compte tant
+ * que celui qui l'a faite est en route.
  * Elle expire d'elle-même (ex. si le bâtiment qui arrivait a été enlevé).
  */
 const RESERVATION_TICKS = 30;
 export function reservedForSomeoneElse(target, from) {
   const r = target.incoming;
-  if (!r || r.from === from) return false;
+  if (!r || r.from === from.id) return false;
   return game.tick - r.tick < RESERVATION_TICKS;
 }

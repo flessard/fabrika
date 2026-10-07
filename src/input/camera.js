@@ -18,12 +18,18 @@ export function setResizeHandler(handler) {
 
 /**
  * Le canevas a la taille de l'écran divisée par le zoom ; le navigateur l'agrandit
- * ensuite sans lissage, ce qui garde les pixels nets.
+ * ensuite sans lissage, ce qui garde les pixels nets. Un pixel de jeu de plus dans
+ * chaque sens : le canevas peut être décalé d'une fraction de pixel (voir plus bas).
  */
 export function resizeView() {
-  view.width = Math.ceil(innerWidth / view.zoom);
-  view.height = Math.ceil(innerHeight / view.zoom);
-  onResize(view.width, view.height);
+  const width = Math.ceil(innerWidth / view.zoom) + 1;
+  const height = Math.ceil(innerHeight / view.zoom) + 1;
+  // Pendant un zoom progressif, la surface de dessin ne change que si sa taille change.
+  if (width !== view.width || height !== view.height) {
+    view.width = width;
+    view.height = height;
+    onResize(width, height);
+  }
   canvas.style.width = `${view.width * view.zoom}px`;
   canvas.style.height = `${view.height * view.zoom}px`;
   clampCamera();
@@ -55,6 +61,40 @@ export function centerOn(px, py) {
 
 /** Change le zoom en gardant fixe le point de la carte sous (screenX, screenY). */
 export function setZoom(zoom, screenX = innerWidth / 2, screenY = innerHeight / 2) {
+  zoomTarget = null; // un zoom direct (clavier) arrête un zoom progressif en cours
+  applyZoom(zoom, screenX, screenY);
+}
+
+// ---------- Zoom progressif (molette, pincement au trackpad) ----------
+//
+// Le zoom peut prendre n'importe quelle valeur entre ZOOM_MIN et ZOOM_MAX. La molette
+// déplace une cible, et le zoom glisse vers elle en douceur, ancré sous la souris.
+
+/** Vitesse de la molette : un cran de souris (environ 100) rapproche d'environ 8 %. */
+const WHEEL_ZOOM_SPEED = 0.0008;
+/** Vitesse à laquelle le zoom rejoint sa cible (plus grand = plus vif). */
+const ZOOM_EASING = 12;
+let zoomTarget = null;
+let zoomAnchor = null;
+
+/** Molette : rapproche (deltaY < 0) ou éloigne, autour du point (screenX, screenY). */
+export function zoomByWheel(deltaY, screenX, screenY) {
+  const from = zoomTarget ?? view.zoom;
+  zoomTarget = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, from * Math.exp(-deltaY * WHEEL_ZOOM_SPEED)));
+  zoomAnchor = { x: screenX, y: screenY };
+}
+
+/** À chaque image : le zoom avance vers sa cible. */
+export function updateZoom(dt) {
+  if (zoomTarget === null) return;
+  const next = view.zoom + (zoomTarget - view.zoom) * (1 - Math.exp(-dt * ZOOM_EASING));
+  const done = Math.abs(zoomTarget - next) < 0.002;
+  applyZoom(done ? zoomTarget : next, zoomAnchor.x, zoomAnchor.y);
+  if (done) zoomTarget = null;
+}
+
+/** Change le zoom en gardant fixe le point de la carte sous (screenX, screenY). */
+function applyZoom(zoom, screenX, screenY) {
   zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom));
   if (zoom === view.zoom) return;
   const worldX = view.camX + screenX / view.zoom;
@@ -66,10 +106,29 @@ export function setZoom(zoom, screenX = innerWidth / 2, screenY = innerHeight / 
   clampCamera();
 }
 
+/**
+ * Défilement fluide : le rendu arrondit la caméra au pixel de jeu (pour la netteté),
+ * et on décale le canevas de la fraction qui reste, au pixel d'écran près. Sans ça,
+ * à un zoom de 3, la caméra avancerait par marches de 3 pixels d'écran.
+ */
+export function applySubpixelOffset() {
+  const step = 1 / devicePixelRatio; // le plus petit déplacement visible à l'écran
+  const shift = (v) => Math.round(((v - Math.floor(v)) * view.zoom) / step) * step;
+  canvas.style.transform = `translate(${-shift(view.camX)}px, ${-shift(view.camY)}px)`;
+}
+
+/** Point de la carte (en pixels de jeu) sous un événement souris ou tactile. */
+export function worldFromEvent(event) {
+  // Le canevas commence au pixel de jeu arrondi ; son décalage est déjà dans son rectangle.
+  const r = canvas.getBoundingClientRect();
+  return {
+    x: (event.clientX - r.left) / view.zoom + Math.floor(view.camX),
+    y: (event.clientY - r.top) / view.zoom + Math.floor(view.camY),
+  };
+}
+
 /** Case de la carte sous un événement souris ou tactile. */
 export function cellFromEvent(event) {
-  const r = canvas.getBoundingClientRect();
-  const worldX = (event.clientX - r.left) / view.zoom + view.camX;
-  const worldY = (event.clientY - r.top) / view.zoom + view.camY;
-  return { x: Math.floor(worldX / TILE), y: Math.floor(worldY / TILE) };
+  const { x, y } = worldFromEvent(event);
+  return { x: Math.floor(x / TILE), y: Math.floor(y / TILE) };
 }

@@ -9,6 +9,8 @@ import { anchorFor, buildingAt, placementProblem } from '../world/buildings.js';
 import { hasShapes, shapeChoice, shapeName } from '../input/shapePicker.js';
 import { placementAt, placementProblems } from '../input/selection.js';
 import { toolType } from '../input/actions.js';
+import { affordable, stockProblem } from '../world/inventory.js';
+import { mergeProblem } from '../sim/belt.js';
 
 const hintEl = document.getElementById('hint');
 let shown = '';
@@ -27,14 +29,19 @@ export function updateHint() {
   hintEl.classList.toggle('warn', warn);
 }
 
+/** Raison d'un refus venu d'une commande (ex. une rotation qui créerait une jonction), montrée 2 s. */
+let denied = null;
+
 // Un clic refusé fait trembler la bulle, pour qu'on lise la raison.
-on('placement:denied', () => {
+on('placement:denied', ({ problem } = {}) => {
+  if (problem) denied = { problem, until: performance.now() + 2000 };
   hintEl.classList.remove('shake');
   void hintEl.offsetWidth; // relance l'animation même si elle vient de jouer
   hintEl.classList.add('shake');
 });
 
 function hintText() {
+  if (denied && performance.now() < denied.until) return warning(t('hint.denied', { problem: denied.problem }));
   if (ui.placing) return placingHint(ui.placing);
   if (ui.beltPlan) return beltPlanHint(ui.beltPlan);
   const problem = buildProblemHint();
@@ -44,17 +51,26 @@ function hintText() {
   if (ui.layer === 'under') return undergroundHint();
   if (!ui.hover) return '';
   if (ui.tool === 'hand') return machineHint(buildingAt(ui.hover.x, ui.hover.y));
-  if (hasShapes(ui.tool)) return shapeHint(ui.tool, shapeChoice(ui.tool, ui.hover));
+  if (hasShapes(ui.tool)) {
+    const choice = shapeChoice(ui.tool, ui.hover);
+    const type = toolType();
+    const merge = choice.ok && type && mergeProblem([virtualOf(type, ui.hover.x, ui.hover.y, choice.dir, { shape: choice.shape })]);
+    if (merge) return warning(t('hint.cannotPlace', { name: toolName(ui.tool).toLowerCase(), problem: merge }));
+    return shapeHint(ui.tool, choice);
+  }
   return '';
 }
 
 /** Ex. « Four · 1,3 s par item · Minerai de fer → Lingot de fer · 62 % » (selon la langue). */
 function machineHint(b) {
+  if (b?.kind === 'storage') {
+    return t('hint.storage', { name: buildingName(b.type), n: b.slots.filter(Boolean).length, total: b.slots.length });
+  }
   const def = b && BUILDINGS[b.type];
   if (!def?.time) return '';
 
-  const makes = b.kind === 'drill'
-    ? itemName(b.ore)
+  const makes = b.kind === 'drill' ? itemName(b.ore)
+    : def.assembly ? assemblyText(def.assembly)
     : Object.entries(def.recipes).map(([from, to]) => `${itemName(from)} → ${itemName(to)}`).join(' · ');
 
   const busy = b.kind === 'drill' ? b.working : !!b.current;
@@ -65,10 +81,28 @@ function machineHint(b) {
   return t('hint.machine', { name: buildingName(b.type), s: decimal(def.time), makes, state });
 }
 
+/** Un bâtiment tel qu'il serait posé (pour vérifier les jonctions). */
+const virtualOf = (type, x, y, dir, props = {}) => ({ type, kind: BUILDINGS[type].kind, x, y, w: BUILDINGS[type].w, h: BUILDINGS[type].h, dir, ...props });
+
+/** Ex. « Plaque de fer + Fil de cuivre → 2 Tapis » */
+const assemblyText = ({ inputs, output, count }) =>
+  `${Object.keys(inputs).map(itemName).join(' + ')} → ${count} ${itemName(output)}`;
+
 function placingHint({ mode, parts }) {
   const what = tn('selection.count', parts.length);
   const keys = t(`hint.place.keys.${mode}`);
   const problems = ui.hover ? placementProblems(placementAt(ui.hover).spots) : [];
+  // Une copie se paie : il faut assez de stock pour tout le groupe.
+  if (mode === 'copy' && !problems.length) {
+    const counts = {};
+    for (const { type } of parts) counts[type] = (counts[type] ?? 0) + 1;
+    for (const [type, n] of Object.entries(counts)) {
+      const problem = stockProblem(type, n);
+      if (problem) problems.push({ name: buildingName(type), problem, count: n });
+    }
+  }
+  const merge = ui.hover && !problems.length ? placementAt(ui.hover).merge : null;
+  if (merge) problems.push({ name: buildingName('belt'), problem: merge, count: 1 });
   if (problems.length) return warning(`${t('hint.cannotPlaceHere', { problems: problemList(problems) })} · ${keys}`);
   return `${t(`hint.place.${mode}`, { what })} · ${keys}`;
 }
@@ -83,7 +117,18 @@ function problemList(problems) {
 
 /** Tracé de tapis : les cases où un tapis ne pourra pas être posé, et pourquoi. */
 function beltPlanHint({ type, cells }) {
-  const spots = cells.map(({ x, y }) => ({ part: { type }, problem: placementProblem(type, x, y) }));
+  // Le stock s'épuise le long du chemin : au-delà, la raison est « plus de tapis en stock ».
+  let left = affordable(type);
+  const placed = [];
+  const spots = cells.map(({ x, y, dir }) => {
+    const v = virtualOf(type, x, y, dir);
+    const problem = placementProblem(type, x, y) ?? (left > 0 ? null : stockProblem(type)) ?? mergeProblem([...placed, v]);
+    if (!problem) {
+      left--;
+      placed.push(v);
+    }
+    return { part: { type }, problem };
+  });
   const problems = placementProblems(spots);
   const blocked = spots.filter((s) => s.problem).length;
   if (!problems.length) return t('hint.belts', { n: cells.length });
@@ -96,7 +141,7 @@ function buildProblemHint() {
   const type = toolType();
   if (!type) return null; // l'outil ne sert pas ici : la bulle du sous-sol le dit déjà
   const { x, y } = anchorFor(type, ui.hover);
-  const problem = placementProblem(type, x, y);
+  const problem = placementProblem(type, x, y) ?? stockProblem(type) ?? mergeProblem([virtualOf(type, x, y, ui.dir)]);
   return problem && warning(t('hint.cannotPlace', { name: buildingName(type).toLowerCase(), problem }));
 }
 

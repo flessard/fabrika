@@ -1,27 +1,30 @@
 // Tapis : transportent un item à la fois, dans leur direction.
+//
+// Un tapis n'a qu'une seule entrée : son arrière, ou un côté s'il fait un coin. Pour
+// réunir deux lignes, il faut un groupeur ; pour en séparer une, un splitter (un tapis
+// n'a qu'une sortie, devant). La pose d'une jonction est refusée (voir mergeProblem).
 import { BELT_SPEED } from '../config.js';
 import { DIRS, inBounds, opposite } from '../core/grid.js';
 import { game } from '../state.js';
 import { splitterOutputs } from '../data/splitterShapes.js';
-import { inputLayer, isTunnel, onLayer, outputLayer } from '../data/buildings.js';
+import { inputLayer, isTunnel, layersOf, onLayer, outputLayer } from '../data/buildings.js';
+import { t } from '../i18n/index.js';
 import { buildingAt, outputCell } from '../world/buildings.js';
 import { canEnter, pushItem, reservedForSomeoneElse, reserveEntry } from './transfer.js';
 import { recordFlow } from './flow.js';
 
 /**
  * Le tapis peut-il recevoir un item qui arrive en allant vers `dir`, envoyé par `from` ?
- *
- * Jonctions : quand plusieurs côtés alimentent le même tapis, ils passent chacun
- * leur tour. Chaque côté qui demande laisse une trace ; le côté qui vient de passer
- * cède sa place tant qu'un autre côté attend.
+ * Seulement par son entrée (voir inputSide) : jamais deux lignes sur un même tapis.
  */
 export function beltAccepts(belt, dir, from) {
   if (dir === opposite(belt.dir)) return false; // on n'entre pas à contre-sens
   if (isTunnel(belt) && dir !== belt.dir) return false; // un tunnel ne prend que par l'arrière
+  if (!isTunnel(belt) && inputSide(belt) !== opposite(dir)) return false; // pas par son entrée
 
   belt.requests[dir] = game.tick;
   if (belt.item) return false;
-  if (belt.incoming?.from === from) return true; // place déjà réservée par lui
+  if (belt.incoming?.from === from.id) return true; // place déjà réservée par lui
   if (reservedForSomeoneElse(belt, from)) return false;
 
   const otherSideWaiting = belt.requests.some((tick, side) => side !== dir && tick >= game.tick - 1);
@@ -74,37 +77,88 @@ export function stepBelt(belt, dt) {
 }
 
 /**
- * Côtés du tapis à dessiner (ses « bras ») : sa sortie, chaque côté par où un autre
- * tapis, splitter ou machine l'alimente, et l'arrière quand rien ne l'alimente.
- * C'est ce qui donne les formes droit, coin, T et croix.
+ * Côtés par où un tapis, splitter ou machine envoie ses items dans ce tapis.
  *
  * `virtual` : un bâtiment pas encore posé (l'aperçu sous le curseur), ou une liste
- * (un groupe déplacé ou copié), traité comme s'il était déjà sur la carte. Sert à montrer la forme qu'auront les tapis.
- *
+ * (un groupe déplacé ou copié), traité comme s'il était déjà sur la carte.
+ * `ignore` : bâtiments qui ne comptent pas (ceux qu'on déplace, encore à leur ancienne place).
  * Seuls comptent les voisins de la couche où le tapis reçoit ses items.
  */
-export function beltArms(belt, virtual = null) {
+export function feederSides(belt, virtual = null, ignore = null) {
   const layer = inputLayer(belt);
   const extra = virtual ? [].concat(virtual).filter((v) => onLayer(v, layer)) : [];
-  const at = (x, y) => extra.find((v) => covers(v, x, y)) ?? buildingAt(x, y, layer);
-  const arms = [belt.dir];
-  let fed = false;
-
+  const at = (x, y) => {
+    const found = extra.find((v) => covers(v, x, y)) ?? buildingAt(x, y, layer);
+    return found && ignore?.has(found) ? null : found;
+  };
+  const sides = [];
   for (let side = 0; side < 4; side++) {
     if (side === belt.dir) continue;
     const [dx, dy] = DIRS[side];
     const nx = belt.x + dx, ny = belt.y + dy;
     if (!inBounds(nx, ny)) continue;
-
     const neighbor = at(nx, ny);
-    if (neighbor && feedsInto(neighbor, belt.x, belt.y, opposite(side), layer)) {
-      arms.push(side);
-      fed = true;
+    if (neighbor && feedsInto(neighbor, belt.x, belt.y, opposite(side), layer)) sides.push(side);
+  }
+  return sides;
+}
+
+/**
+ * L'entrée d'un tapis : son arrière s'il est alimenté par là, sinon son seul côté
+ * alimenté (un coin). Avec deux côtés alimentés et rien derrière : aucune entrée
+ * (une jonction sans groupeur, qui ne se pose plus mais peut venir d'une vieille partie).
+ */
+export function inputSide(belt) {
+  const sides = feederSides(belt);
+  const back = opposite(belt.dir);
+  if (sides.includes(back)) return back;
+  return sides.length === 1 ? sides[0] : null;
+}
+
+/**
+ * Côtés du tapis à dessiner (ses « bras ») : sa sortie, et son entrée (l'arrière quand
+ * rien ne l'alimente). C'est ce qui donne les formes droit et coin.
+ */
+export function beltArms(belt, virtual = null, ignore = null) {
+  const sides = feederSides(belt, virtual, ignore);
+  return [belt.dir, ...(sides.length ? sides : [opposite(belt.dir)])];
+}
+
+const isPlainBelt = (b) => b.kind === 'belt' && !isTunnel(b);
+
+/**
+ * Deux entrées sur un même tapis = une jonction, interdite sans groupeur. Vérifie les
+ * tapis touchés par des bâtiments pas encore posés (`virtuals`) : les nouveaux tapis
+ * eux-mêmes, et les tapis où ces bâtiments enverraient leurs items. Retourne la raison
+ * à montrer au joueur, ou null. `ignore` : comme pour feederSides.
+ */
+export function mergeProblem(virtuals, ignore = null) {
+  const toCheck = new Set();
+  const at = (x, y, layer) => {
+    const found = virtuals.find((v) => covers(v, x, y) && onLayer(v, layer)) ?? buildingAt(x, y, layer);
+    return found && ignore?.has(found) ? null : found;
+  };
+  for (const v of virtuals) {
+    if (isPlainBelt(v)) toCheck.add(v);
+    // Les tapis voisins où v enverrait ses items
+    for (const layer of layersOf(v.type)) {
+      for (let cy = v.y; cy < v.y + v.h; cy++) {
+        for (let cx = v.x; cx < v.x + v.w; cx++) {
+          for (let side = 0; side < 4; side++) {
+            const [dx, dy] = DIRS[side];
+            const nx = cx + dx, ny = cy + dy;
+            if (covers(v, nx, ny)) continue;
+            const target = at(nx, ny, layer);
+            if (target && isPlainBelt(target) && feedsInto(v, nx, ny, side, layer)) toCheck.add(target);
+          }
+        }
+      }
     }
   }
-
-  if (!fed) arms.push(opposite(belt.dir));
-  return arms;
+  for (const belt of toCheck) {
+    if (feederSides(belt, virtuals, ignore).length > 1) return t('problem.merge');
+  }
+  return null;
 }
 
 /**
@@ -118,6 +172,8 @@ export function feedsInto(b, x, y, towardCell, layer = 'surface') {
     case 'splitter': return splitterOutputs(b.dir, b.shape).includes(towardCell);
     case 'belt':
     case 'merger': return b.dir === towardCell;
+    case 'storage': if (!b.outputOpen) return false; // conteneur fermé : il ne renvoie rien
+    // falls through : sinon, comme une machine
     default: {
       const [ox, oy] = outputCell(b);
       return b.dir === towardCell && ox === x && oy === y;

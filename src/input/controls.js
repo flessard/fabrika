@@ -13,9 +13,11 @@ import {
   cancelPlacing, clearSelection, eraseSelection, extendSelectBox, finishSelectBox, placeGroupAt,
   rotatePlacing, startCopy, startMove, startSelectBox,
 } from './selection.js';
-import { cellFromEvent, clampCamera, panBy, setZoom } from './camera.js';
+import { cellFromEvent, clampCamera, panBy, setZoom, worldFromEvent, zoomByWheel } from './camera.js';
 import { unlockAudio } from '../audio/engine.js';
 import { toggleSound } from '../ui/hud.js';
+import { openPause } from '../ui/pauseMenu.js';
+import { closeLevelCard, isLevelCardOpen } from '../ui/levelCard.js';
 
 /** Touches enfoncées en ce moment (en minuscules ; ' ' pour la barre d'espace). */
 const keysDown = new Set();
@@ -92,6 +94,7 @@ function onPointerDown(e, canvas) {
 function onPointerMove(e) {
   const cell = cellFromEvent(e);
   ui.hover = inBounds(cell.x, cell.y) ? cell : null;
+  ui.pointer = ui.hover ? worldFromEvent(e) : null;
   showCursorCell(ui.hover);
   if (!drag) return;
 
@@ -130,10 +133,9 @@ function endDrag(canvas) {
 }
 
 /**
- * Molette de souris (ou pincement au trackpad) → zoom.
+ * Molette de souris (ou pincement au trackpad) → zoom progressif.
  * Défilement à deux doigts au trackpad → déplacement.
  */
-let wheelTotal = 0;
 const clampToMap = ({ x, y }) => ({
   x: Math.max(0, Math.min(MAP_W - 1, x)),
   y: Math.max(0, Math.min(MAP_H - 1, y)),
@@ -147,10 +149,9 @@ function onWheel(e) {
     panBy(e.deltaX / view.zoom, e.deltaY / view.zoom);
     return;
   }
-  wheelTotal += e.deltaY;
-  if (Math.abs(wheelTotal) < 40) return;
-  setZoom(view.zoom + (wheelTotal < 0 ? 1 : -1), e.clientX, e.clientY);
-  wheelTotal = 0;
+  // Molette ou pincement : un zoom progressif, vers le point sous la souris.
+  const lines = e.deltaMode === 1 ? 33 : 1; // certaines souris comptent en lignes
+  zoomByWheel(e.deltaY * lines, e.clientX, e.clientY);
 }
 
 // ---------- Clavier ----------
@@ -158,6 +159,11 @@ function onWheel(e) {
 const keyName = (e) => (e.key === ' ' ? ' ' : e.key.toLowerCase());
 
 function onKeyDown(e) {
+  if (e.defaultPrevented) return; // déjà traitée (ex. Échap qui ferme le menu)
+  // Les raccourcis avec Ctrl / ⌘ (ex. sauvegarder) ne sont pas des touches de jeu :
+  // sans ça, Ctrl + S ferait aussi défiler la carte vers le bas (S de WASD).
+  if (e.ctrlKey || e.metaKey) return;
+  if (ui.screen !== 'game') return; // sur l'écran titre ou le menu Échap, le clavier sert au menu
   const key = keyName(e);
   if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(key)) e.preventDefault();
   keysDown.add(key);
@@ -182,13 +188,18 @@ function onKeyDown(e) {
   else if (key === 'f') shapeAction();
   else if (key === 'p') priorityAction();
   else if (key === 'escape') {
-    ui.selected = null;
-    setTool('hand');
+    // Échap annule d'abord ce qui est en cours ; quand il n'y a plus rien, il ouvre le menu.
+    if (isLevelCardOpen()) closeLevelCard();
+    else if (ui.selected || ui.tool !== 'hand') {
+      ui.selected = null;
+      setTool('hand');
+    } else openPause(e);
   }
   else if (key === 'm') toggleSound();
   else if (key === 'u') toggleLayer();
-  else if (key === '+' || key === '=') setZoom(view.zoom + 1);
-  else if (key === '-' || key === '_') setZoom(view.zoom - 1);
+  // Au clavier, des crans entiers (les pixels restent parfaitement nets).
+  else if (key === '+' || key === '=') setZoom(Math.floor(view.zoom + 1e-6) + 1);
+  else if (key === '-' || key === '_') setZoom(Math.ceil(view.zoom - 1e-6) - 1);
   else if (/^[0-9]$/.test(key)) selectToolByNumber(Number(key));
   else selectToolByKey(key);
 }

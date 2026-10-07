@@ -20,7 +20,7 @@ export function mergerAccepts(merger, dir, from) {
 
   merger.requests[side] = game.tick; // « j'attends » : sert au tour de rôle
   if (merger.item) return false;
-  if (merger.incoming?.from === from) return true;
+  if (merger.incoming?.from === from.id) return true;
   if (reservedForSomeoneElse(merger, from)) return false;
 
   // L'entrée dont c'est le tour passe en priorité si elle attend ; sinon on la saute.

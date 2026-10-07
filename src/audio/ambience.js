@@ -77,14 +77,15 @@ function createChannels(ctx) {
 }
 
 /** À appeler à chaque image : règle le volume et le côté de chaque boucle. */
-export function updateAmbience() {
+/** À chaque image. `muted` : tout se tait en douceur (écran titre). */
+export function updateAmbience({ muted = false } = {}) {
   const ctx = audioContext();
   if (!ctx) return;
   if (!channels) createChannels(ctx);
 
   for (const [name, loop] of Object.entries(LOOPS)) {
     let loudness = 0, panSum = 0;
-    for (const b of game.buildings) {
+    for (const b of muted ? [] : game.buildings) {
       if (!loop.isActive(b)) continue;
       const { gain, pan } = hearing(...center(b));
       if (gain < INAUDIBLE) continue;

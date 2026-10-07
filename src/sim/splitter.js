@@ -17,7 +17,7 @@ import { recordFlow } from './flow.js';
  */
 export function splitterAccepts(splitter, dir, from) {
   if (splitter.item || dir !== splitter.dir) return false;
-  return splitter.incoming?.from === from || !reservedForSomeoneElse(splitter, from);
+  return splitter.incoming?.from === from.id || !reservedForSomeoneElse(splitter, from);
 }
 
 export function insertIntoSplitter(splitter, itemType, dir, from) {

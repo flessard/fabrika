@@ -1,13 +1,16 @@
-// Mini-carte : la carte entière à 2 pixels par case, les bâtiments, et le cadre de la caméra.
-import { TILE } from '../config.js';
+// Mini-carte : la carte entière, les bâtiments, le brouillard, et le cadre de la caméra.
+import { MINIMAP_SCALE, TILE } from '../config.js';
 import { PALETTE as P } from '../data/palette.js';
 import { game, ui, view } from '../state.js';
 import { isUnderground } from '../data/buildings.js';
 import { drawOn, rect } from './pen.js';
 import { bakeMinimapBase } from './terrainImage.js';
+import { bakeFog } from './fogImage.js';
+import { fogVersion } from '../world/fog.js';
 
-const SCALE = 2;
-const COLOR_BY_KIND = { belt: P.silver, splitter: P.silver, merger: P.silver, hub: P.rose };
+const SCALE = MINIMAP_SCALE;
+let fogImage = null, fogDrawn = -1;
+const COLOR_BY_KIND = { belt: P.silver, splitter: P.silver, merger: P.silver, hub: P.rose, storage: P.clay };
 
 let base = null;
 
@@ -25,6 +28,11 @@ export function renderMinimap(ctx) {
     const color = isUnderground(b) ? P.clay : COLOR_BY_KIND[b.kind] ?? P.amber;
     rect(b.x * SCALE, b.y * SCALE, b.w * SCALE, b.h * SCALE, color);
   }
+  if (fogDrawn !== fogVersion) {
+    fogImage = bakeFog(SCALE);
+    fogDrawn = fogVersion;
+  }
+  ctx.drawImage(fogImage, 0, 0);
   ctx.strokeStyle = P.white;
   ctx.lineWidth = 1;
   ctx.strokeRect(

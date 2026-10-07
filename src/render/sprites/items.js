@@ -43,6 +43,16 @@ const SHAPES = {
   ],
 };
 
+SHAPES.belt = [
+  '.......',
+  'kkkkkkk',
+  'kaaaaak',
+  'kbcbcbk',
+  'kaaaaak',
+  'kkkkkkk',
+  '.......',
+];
+
 export const ITEM_SIZE = 7;
 
 const cache = {};

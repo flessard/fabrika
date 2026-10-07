@@ -10,6 +10,7 @@ import { machineSprite } from '../render/sprites/machines.js';
 import { cancelPlacing, clearSelection, rotatePlacing } from '../input/selection.js';
 import { on } from '../core/events.js';
 import { toolName } from '../i18n/index.js';
+import { stockOf } from '../world/inventory.js';
 
 let gameCanvas = null;
 
@@ -119,6 +120,11 @@ export function buildToolbar(canvas) {
     if (ui.placing) rotatePlacing();
     else ui.dir = turnRight(ui.dir);
   } }));
+  // Le bouton Tapis montre combien il en reste en stock.
+  const count = document.createElement('i');
+  count.className = 'tool-count';
+  bar.querySelector('#tool-belt').append(count);
+
   const layerButton = toolButton({ id: 'layer', label: toolName('layer'), key: 'U', onClick: toggleLayer });
   layerButton.setAttribute('aria-pressed', 'false');
   bar.append(layerButton);
@@ -162,6 +168,17 @@ export function setTool(id) {
     button.setAttribute('aria-pressed', String(button.dataset.tool === id));
   }
   gameCanvas.classList.toggle('build', id !== 'hand');
+}
+
+let shownCount = -1;
+/** À chaque image : le nombre de tapis en stock sur le bouton Tapis. */
+export function updateToolCounts() {
+  const n = stockOf('belt');
+  if (n === shownCount) return;
+  shownCount = n;
+  const badge = document.querySelector('#tool-belt .tool-count');
+  badge.textContent = n;
+  badge.classList.toggle('empty', n === 0);
 }
 
 /** Les outils qui ont un numéro (ceux qui n'ont pas leur propre lettre). */

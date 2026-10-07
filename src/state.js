@@ -10,14 +10,26 @@ export const game = {
   map: null,
   /** Tous les bâtiments posés. */
   buildings: [],
+  /** byId.get(id) → bâtiment. Chaque bâtiment a un identifiant stable (b.id). */
+  byId: new Map(),
+  /** Prochain identifiant de bâtiment. */
+  nextId: 1,
+  /** Cases découvertes (1) ou encore dans le brouillard (0) : voir world/fog.js. */
+  explored: null,
   /** grid[cellIndex(x, y)] → bâtiment qui occupe la case en surface, ou null. */
   grid: [],
   /** Même chose pour le sous-sol (tapis souterrains et tunnels). */
   under: [],
   /** Effets visuels (fumée, étincelles, icônes de livraison). */
   particles: [],
-  /** Nombre d'items livrés au dépôt, par type d'item. */
+  /** Nombre d'items livrés au dépôt depuis le début, par type d'item. */
   delivered: {},
+  /** Inventaire de l'équipe : objets de construction en stock (voir world/inventory.js). */
+  inventory: {},
+  /** Niveau en cours (0 = le premier ; voir data/levels.js et sim/levels.js). */
+  level: 0,
+  /** Ce qui a été livré pour la commande du niveau en cours, par type d'item. */
+  levelDelivered: {},
   /** Nombre de pas de simulation depuis le début de la carte. */
   tick: 0,
   /** Point (en pixels) où centrer la caméra au départ. */
@@ -35,6 +47,8 @@ export const view = {
 };
 
 export const ui = {
+  /** Écran affiché : 'title' (menu de démarrage) ou 'game'. */
+  screen: 'title',
   /** Outil actif (id d'un outil de data/buildings.js). */
   tool: 'hand',
   /** Couche regardée et modifiée : 'surface' ou 'under' (vue du sous-sol, touche U). */
@@ -54,6 +68,8 @@ export const ui = {
   mergerShape: 'T',
   /** Case sous le curseur, ou null. */
   hover: null,
+  /** Point exact de la souris sur la carte (pixels de jeu), ou null : montré aux autres joueurs. */
+  pointer: null,
   /** Bâtiment dont la fiche est ouverte, ou null. */
   selected: null,
   /** Zone en train d'être encadrée avec l'outil Sélection : { from, to } (cases), ou null. */

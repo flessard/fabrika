@@ -8,15 +8,20 @@ import { PALETTE as P } from '../data/palette.js';
 import { game, ui, view } from '../state.js';
 import { GROUND } from '../world/terrain.js';
 import { anchorFor, buildingAt, canPlace, outputCell } from '../world/buildings.js';
+import { affordable, stockProblem } from '../world/inventory.js';
 import { hasShapes, shapeChoice } from '../input/shapePicker.js';
 import { highlightedBuildings, placementAt, selectBoxArea } from '../input/selection.js';
 import { toolType } from '../input/actions.js';
-import { beltArms, feedsInto } from '../sim/belt.js';
+import { beltArms, feedsInto, mergeProblem } from '../sim/belt.js';
 import { emptyFilters } from '../data/splitterShapes.js';
 import { outputScore } from '../sim/splitter.js';
 
-/** Coin haut-gauche de la caméra arrondi au pixel, pour un rendu net. */
-export const cameraOrigin = () => ({ ox: Math.round(view.camX), oy: Math.round(view.camY) });
+/**
+ * Coin haut-gauche de la caméra arrondi au pixel de jeu (vers le bas), pour un rendu net.
+ * Le reste (une fraction de pixel) est rattrapé en décalant le canevas à l'écran
+ * (voir applySubpixelOffset dans input/camera.js) : la caméra glisse sans à-coups.
+ */
+export const cameraOrigin = () => ({ ox: Math.floor(view.camX), oy: Math.floor(view.camY) });
 
 /** Cases visibles à l'écran. */
 export function visibleCells(ox, oy) {
@@ -79,7 +84,7 @@ const CONVEYOR_TOOLS = new Set(['belt', 'splitter', 'smartSplitter', 'merger', '
  * [{ x, y (centre, en pixels de la carte), dir (sens du flux), kind: 'in' | 'out', connected, faint }]
  *
  *   - branchée (`connected`) : un tapis ou une machine y passe déjà ; on dessine un raccord ;
- *   - la sortie (foreuse, four, presse) pas encore branchée : une flèche, toujours montrée ;
+ *   - la sortie (foreuse, four, presse, conteneur ouvert) pas encore branchée : une flèche, toujours montrée ;
  *   - les entrées pas encore branchées (four, presse, dépôt : n'importe quel côté sauf la
  *     sortie) : des flèches estompées (`faint`), seulement quand on survole la machine ou
  *     qu'on tient un outil de tapis, pour montrer où brancher.
@@ -92,8 +97,9 @@ export function machinePorts(visible) {
   const showAll = CONVEYOR_TOOLS.has(ui.tool);
 
   for (const b of visible) {
-    if (b.kind !== 'drill' && b.kind !== 'crafter' && b.kind !== 'hub') continue;
-    const out = b.kind === 'hub' ? null : outputCell(b);
+    if (b.kind !== 'drill' && b.kind !== 'crafter' && b.kind !== 'hub' && b.kind !== 'storage') continue;
+    // Le dépôt n'a pas de sortie, ni un conteneur fermé (il reçoit alors de tous les côtés).
+    const out = b.kind === 'hub' || (b.kind === 'storage' && !b.outputOpen) ? null : outputCell(b);
     if (out) {
       // Au milieu du bord, entre la dernière case de la machine et la case de sortie.
       const [dx, dy] = DIRS[b.dir];
@@ -177,15 +183,17 @@ export function cursorPreview(cell, time) {
     if (def.priority) ghost.priority = virtual.priority = ui.smartPriority;
     if (def.filter) ghost.filters = emptyFilters();
   } else if (def.tunnel) {
-    ok = canPlace(type, x, y);
+    ok = canPlace(type, x, y) && !stockProblem(type);
     ghost = { kind: 'tunnel', x, y, dir: ui.dir, end: def.tunnel };
   } else if (def.kind === 'belt') {
-    ok = canPlace(type, x, y);
+    ok = canPlace(type, x, y) && !stockProblem(type);
     ghost = { kind: type, x, y, dir: ui.dir, arms: ok ? beltArms(virtual, virtual) : [ui.dir, opposite(ui.dir)] };
   } else {
-    ok = canPlace(type, x, y);
+    ok = canPlace(type, x, y) && !stockProblem(type);
     ghost = { kind: 'machine', building: { ...virtual, anim: time * 4, working: false } };
   }
+  // Une jonction (deux entrées sur un tapis) se fait par un groupeur, jamais toute seule.
+  if (ok && mergeProblem([virtual])) ok = false;
   const affected = ok ? reshapedNeighbors([virtual]) : new Map();
   return { ghosts: [ghost], affected, outlines: [{ x, y, w: def.w, h: def.h, color: ok ? P.lime : P.red }] };
 }
@@ -198,9 +206,14 @@ function beltPlanPreview() {
   const { type, cells } = ui.beltPlan;
   const def = BUILDINGS[type];
   const virtuals = [], outlines = [];
+  // Le stock de tapis s'épuise le long du chemin : la suite est en rouge.
+  let left = affordable(type);
   for (const { x, y, dir } of cells) {
-    if (canPlace(type, x, y)) virtuals.push({ type, kind: def.kind, x, y, w: 1, h: 1, dir });
-    else outlines.push({ x, y, w: 1, h: 1, color: P.red });
+    const v = { type, kind: def.kind, x, y, w: 1, h: 1, dir };
+    if (canPlace(type, x, y) && left > 0 && !mergeProblem([...virtuals, v])) {
+      virtuals.push(v);
+      left--;
+    } else outlines.push({ x, y, w: 1, h: 1, color: P.red });
   }
   const ghosts = virtuals.map((v) => ({ kind: type, x: v.x, y: v.y, dir: v.dir, arms: beltArms(v, virtuals) }));
   return { ghosts, outlines, affected: reshapedNeighbors(virtuals) };

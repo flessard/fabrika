@@ -1,13 +1,18 @@
 // Actions du joueur sur la carte : poser, effacer, tourner, tracer des tapis.
 // Ces fonctions ne savent rien de la souris ou du clavier (voir controls.js).
-import { TILE } from '../config.js';
+//
+// Elles ne modifient jamais l'usine elles-mêmes : elles émettent des commandes
+// (sim/commands.js), appliquées au pas de simulation suivant. Ce qui ne concerne que
+// ce joueur (outil, direction du prochain bâtiment, forme choisie) reste ici, dans ui.
 import { emit } from '../core/events.js';
 import { DIRS, LEFT, RIGHT, DOWN, UP, turnLeft, turnRight } from '../core/grid.js';
-import { BUILDINGS, baseType, isTunnel, toolWorksOn, typeForTool } from '../data/buildings.js';
+import { BUILDINGS, baseType, toolWorksOn, typeForTool } from '../data/buildings.js';
 import { ui } from '../state.js';
 import { rotatePriority } from '../data/splitterShapes.js';
-import { anchorFor, buildingAt, canPlace, placeBuilding, removeBuilding } from '../world/buildings.js';
-import { spawnPuff } from '../sim/particles.js';
+import { anchorFor, buildingAt, canPlace } from '../world/buildings.js';
+import { stockProblem } from '../world/inventory.js';
+import { mergeProblem } from '../sim/belt.js';
+import { issue } from '../sim/commands.js';
 import { playSound } from '../audio/sounds.js';
 import { cycleShape, hasShapes, nextShapeFor, rememberShape, shapeChoice } from './shapePicker.js';
 
@@ -27,10 +32,16 @@ export function toggleTunnelEnd() {
 }
 
 export function eraseAt(cell) {
-  const target = buildingAt(cell.x, cell.y, ui.layer);
-  if (!target || target.kind === 'hub') return;
-  removeBuilding(target);
-  playSound('remove');
+  issue({ type: 'erase', x: cell.x, y: cell.y, layer: ui.layer });
+}
+
+/** Un bâtiment tel qu'il serait posé (pour vérifier les jonctions avant d'envoyer la commande). */
+const virtualOf = (type, x, y, dir, props = {}) => ({ type, kind: BUILDINGS[type].kind, x, y, w: BUILDINGS[type].w, h: BUILDINGS[type].h, dir, ...props });
+
+/** Refus immédiat, sans attendre la commande : son et bulle d'aide qui dit pourquoi. */
+function deny() {
+  playSound('deny');
+  emit('placement:denied');
 }
 
 /** Pose le bâtiment de l'outil actif sur la case. */
@@ -40,49 +51,23 @@ export function buildAt(cell) {
   if (hasShapes(ui.tool)) return placeShaped(cell, type);
 
   const { x, y } = anchorFor(type, cell);
-  if (!canPlace(type, x, y)) {
-    playSound('deny');
-    emit('placement:denied'); // la bulle d'aide dit pourquoi
-    return;
-  }
-  const { w, h } = BUILDINGS[type];
-  placeBuilding(type, x, y, ui.dir);
-  spawnPuff((x + w / 2) * TILE, (y + h / 2) * TILE, 3);
-  playSound('place');
+  if (!canPlace(type, x, y) || stockProblem(type) || mergeProblem([virtualOf(type, x, y, ui.dir)])) return deny();
+  issue({ type: 'place', building: type, x, y, dir: ui.dir });
   // Après une entrée de tunnel, on pose le plus souvent sa sortie.
   if (ui.tool === 'tunnel') toggleTunnelEnd();
 }
 
 /**
- * Splitter ou groupeur. Posé sur un tapis, il le remplace, garde sa direction
- * et l'item qu'il portait.
+ * Splitter, filtre ou groupeur. Posé sur un tapis, il le remplace, garde sa direction
+ * et l'item qu'il portait (voir la commande 'place').
  */
 function placeShaped(cell, type) {
   const choice = shapeChoice(ui.tool, cell);
-  if (!choice.ok) return;
-
-  const under = buildingAt(cell.x, cell.y, ui.layer);
-  let carried = null;
-  if (under?.kind === 'belt' && !isTunnel(under)) {
-    carried = under.item;
-    removeBuilding(under);
-  }
-
+  if (!choice.ok || mergeProblem([virtualOf(type, cell.x, cell.y, choice.dir, { shape: choice.shape })])) return deny();
   const props = { shape: choice.shape };
   if (ui.tool === 'smartSplitter') props.priority = [...ui.smartPriority];
-  const placed = placeBuilding(type, cell.x, cell.y, choice.dir, props);
+  issue({ type: 'place', building: type, x: cell.x, y: cell.y, dir: choice.dir, props });
   rememberShape(ui.tool, choice.shape);
-  // Un filtre se règle tout de suite : sa fiche s'ouvre.
-  if (placed.filters) ui.selected = placed;
-  if (carried) {
-    // L'item arrivait par l'arrière du tapis : il garde sa place, sans dépasser le centre.
-    const progress = Math.min(0.5, carried.progress);
-    placed.item = placed.kind === 'splitter'
-      ? { type: carried.type, progress, enterDir: choice.dir, outDir: null, outIndex: 0 }
-      : { type: carried.type, progress, enterDir: carried.enterDir, committed: false };
-  }
-  spawnPuff((cell.x + 0.5) * TILE, (cell.y + 0.5) * TILE, 3);
-  playSound('place');
 }
 
 // ---------- Tracer des tapis en glissant ----------
@@ -128,14 +113,7 @@ export function commitBeltPlan() {
   const plan = ui.beltPlan;
   if (!plan) return;
   ui.beltPlan = null;
-  let placed = 0;
-  for (const { x, y, dir } of plan.cells) {
-    if (!canPlace(plan.type, x, y)) continue;
-    placeBuilding(plan.type, x, y, dir);
-    spawnPuff((x + 0.5) * TILE, (y + 0.5) * TILE, 1);
-    placed++;
-  }
-  if (placed) playSound('place');
+  issue({ type: 'placeBelts', building: plan.type, cells: plan.cells.map(({ x, y, dir }) => ({ x, y, dir })) });
 }
 
 /** Échap ou clic droit pendant le glisser : le chemin est abandonné. */
@@ -152,10 +130,10 @@ export function cancelBeltPlan() {
  * sur un tapis, change de forme ; sinon tourne le prochain bâtiment (Maj : sens inverse).
  */
 export function rotateAction(reverse = false) {
-  playSound('click');
   const hovered = ui.hover && buildingAt(ui.hover.x, ui.hover.y, ui.layer);
-  if (ui.tool === 'hand' && hovered && hovered.kind !== 'hub') hovered.dir = turnRight(hovered.dir);
-  else if (hasShapes(ui.tool) && hovered?.kind === 'belt') cycleShape(ui.tool);
+  if (ui.tool === 'hand' && hovered && hovered.kind !== 'hub') return issue({ type: 'rotate', id: hovered.id });
+  playSound('click');
+  if (hasShapes(ui.tool) && hovered?.kind === 'belt') cycleShape(ui.tool);
   else ui.dir = reverse ? turnLeft(ui.dir) : turnRight(ui.dir);
 }
 
@@ -164,16 +142,13 @@ export function rotateAction(reverse = false) {
  * Avec l'outil Tunnel, passe de l'entrée à la sortie.
  */
 export function shapeAction() {
-  playSound('click');
   const hovered = ui.hover && buildingAt(ui.hover.x, ui.hover.y, ui.layer);
-  if (ui.tool === 'tunnel') {
-    toggleTunnelEnd();
-  } else if (ui.tool === 'hand' && hovered && hasShapes(baseType(hovered.type))) {
-    hovered.shape = nextShapeFor(hovered);
-    hovered.next = 0;
-  } else if (hasShapes(ui.tool)) {
-    cycleShape(ui.tool);
+  if (ui.tool === 'hand' && hovered && hasShapes(baseType(hovered.type))) {
+    return issue({ type: 'setShape', id: hovered.id, shape: nextShapeFor(hovered) });
   }
+  playSound('click');
+  if (ui.tool === 'tunnel') toggleTunnelEnd();
+  else if (hasShapes(ui.tool)) cycleShape(ui.tool);
 }
 
 /**
@@ -181,10 +156,9 @@ export function shapeAction() {
  * Avec Déplacer, sur celui qu'on survole ; avec l'outil Prioritaire, sur le prochain à poser.
  */
 export function priorityAction() {
-  const hovered = ui.hover && buildingAt(ui.hover.x, ui.hover.y);
+  const hovered = ui.hover && buildingAt(ui.hover.x, ui.hover.y, ui.layer);
   if (ui.tool === 'hand' && hovered?.priority) {
-    playSound('click');
-    hovered.priority = rotatePriority(hovered.priority, hovered.dir, hovered.shape);
+    issue({ type: 'setPriority', id: hovered.id, priority: rotatePriority(hovered.priority, hovered.dir, hovered.shape) });
   } else if (ui.tool === 'smartSplitter') {
     playSound('click');
     const choice = ui.hover ? shapeChoice(ui.tool, ui.hover) : { dir: ui.dir, shape: ui.smartSplitterShape };

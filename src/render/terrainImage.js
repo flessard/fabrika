@@ -1,6 +1,6 @@
 // Le terrain ne change pas pendant une partie : on le dessine une seule fois dans une
 // grande image, qu'on recopie ensuite à chaque image affichée.
-import { CLIFF_HEIGHT, MAP_H, MAP_PADDING, MAP_W, TILE } from '../config.js';
+import { CLIFF_HEIGHT, MAP_H, MAP_PADDING, MAP_W, MINIMAP_SCALE, TILE } from '../config.js';
 import { cellIndex, inBounds } from '../core/grid.js';
 import { createRng, hash2 } from '../core/random.js';
 import { PALETTE as P, PALETTE_RGB } from '../data/palette.js';
@@ -173,7 +173,8 @@ function drawMapEdge(ctx) {
 export function bakeMinimapBase(map) {
   const GROUND_COLORS = [P.leaf, P.forest, P.sand, P.sky, P.ocean];
   const ORE_COLORS = { [ORE.IRON]: P.mist, [ORE.COPPER]: P.orange, [ORE.COAL]: P.night };
-  return makeCanvas(MAP_W * 2, MAP_H * 2, () => {
+  const s = MINIMAP_SCALE;
+  return makeCanvas(MAP_W * s, MAP_H * s, () => {
     for (let y = 0; y < MAP_H; y++) {
       for (let x = 0; x < MAP_W; x++) {
         const i = cellIndex(x, y);
@@ -181,7 +182,7 @@ export function bakeMinimapBase(map) {
         if (map.deco[i] === DECO.TREE) color = P.pine;
         else if (map.deco[i] === DECO.ROCK) color = P.silver;
         if (map.ore[i]) color = ORE_COLORS[map.ore[i]];
-        rect(x * 2, y * 2, 2, 2, color);
+        rect(x * s, y * s, s, s, color);
       }
     }
   });

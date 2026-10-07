@@ -7,12 +7,16 @@
 //   drill    → produit du minerai sur un gisement (sim/machines.js)
 //   crafter  → transforme un item selon `recipes` (sim/machines.js)
 //   hub      → dépôt qui reçoit les livraisons (sim/machines.js)
+//   storage  → conteneur : garde des items dans ses emplacements (sim/storage.js)
 //
 // layers  : couches occupées, 'surface' (par défaut) et/ou 'under' (le sous-sol).
 //           inputLayer / outputLayer : la couche d'où arrivent ses items et celle où il
 //           les envoie (par défaut, sa seule couche). Le tunnel passe de l'une à l'autre.
 // time    : secondes pour fabriquer un item
 // recipes : item reçu → item fabriqué
+// assembly: recette à plusieurs ingrédients { inputs: { item: nombre }, output, count }
+//           (l'Assembleur) ; chaque ingrédient a sa propre réserve de storage.input
+// cost    : ce que la pose coûte en objets de l'inventaire, ex. { belt: 1 } (rendu si on l'efface)
 // storage : nombre d'items que la machine garde en stock, à l'entrée et à la sortie.
 //           Quand la sortie est bloquée, la machine continue tant que son stock n'est pas plein.
 //
@@ -23,11 +27,11 @@
 // Sa fiche (clic avec l'outil Déplacer) apparaît automatiquement.
 
 export const BUILDINGS = {
-  belt:     { kind: 'belt',     w: 1, h: 1 },
+  belt:     { kind: 'belt',     w: 1, h: 1, cost: { belt: 1 } },
   // Tunnel : l'entrée fait descendre les items au sous-sol, la sortie les fait remonter.
   // Chacune occupe sa case en surface et la case du sous-sol en dessous. Entre les deux,
   // des tapis souterrains, qui passent sous tout mais ne se croisent jamais entre eux.
-  underBelt: { kind: 'belt', w: 1, h: 1, layers: ['under'] },
+  underBelt: { kind: 'belt', w: 1, h: 1, layers: ['under'], cost: { belt: 1 } },
   tunnelIn:  { kind: 'belt', w: 1, h: 1, tunnel: 'in',
                layers: ['surface', 'under'], inputLayer: 'surface', outputLayer: 'under' },
   tunnelOut: { kind: 'belt', w: 1, h: 1, tunnel: 'out',
@@ -43,7 +47,12 @@ export const BUILDINGS = {
               recipes: { fe_ore: 'fe_ingot', cu_ore: 'cu_ingot' } },
   press:    { kind: 'crafter',  w: 2, h: 2, time: 1.1, storage: { input: 10, output: 10 },
               recipes: { fe_ingot: 'fe_plate', cu_ingot: 'cu_wire' } },
+  // Fabrique les objets de construction : 1 plaque de fer + 1 fil de cuivre → 2 tapis.
+  assembler: { kind: 'crafter', w: 2, h: 2, time: 2, storage: { input: 10, output: 20 },
+               assembly: { inputs: { fe_plate: 1, cu_wire: 1 }, output: 'belt', count: 2 } },
   hub:      { kind: 'hub',      w: 3, h: 3 },
+  // Garde des items : 6 emplacements, chacun d'une seule sorte jusqu'à la taille de son paquet.
+  container: { kind: 'storage', w: 2, h: 2, slots: 6 },
 };
 
 /** Ce que posent les outils au sous-sol, à la place de leur bâtiment de surface. */
@@ -58,8 +67,11 @@ for (const type of ['splitter', 'smartSplitter', 'filter', 'merger']) {
 }
 BUILDINGS.underBelt.base = 'belt';
 
-/** Taille des stocks d'une machine (0 si elle n'en a pas). */
-export const inputCapacity = (b) => BUILDINGS[b.type].storage?.input ?? 0;
+/**
+ * Taille des stocks d'une machine (0 si elle n'en a pas). Pour l'Assembleur, l'entrée
+ * compte une réserve par ingrédient.
+ */
+export const inputCapacity = (b) => (BUILDINGS[b.type].storage?.input ?? 0) * Object.keys(BUILDINGS[b.type].assembly?.inputs ?? { one: 1 }).length;
 export const outputCapacity = (b) => BUILDINGS[b.type].storage?.output ?? 0;
 
 /** Type de bâtiment de surface dont un bâtiment souterrain est la copie (sinon, lui-même). */
@@ -95,6 +107,8 @@ export const TOOLS = [
   { id: 'drill' },
   { id: 'furnace' },
   { id: 'press' },
+  { id: 'assembler', key: 'E' },
+  { id: 'container', key: 'B' },
   { id: 'erase', separatorBefore: true, under: true },
   { id: 'select', under: true },
 ];

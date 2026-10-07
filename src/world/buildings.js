@@ -2,6 +2,7 @@
 import { BUILDINGS, layersOf } from '../data/buildings.js';
 import { emptyFilters } from '../data/splitterShapes.js';
 import { buildingName, t } from '../i18n/index.js';
+import { revealAround } from './fog.js';
 import { DOWN, LEFT, RIGHT, cellIndex, inBounds } from '../core/grid.js';
 import { TILE } from '../config.js';
 import { game } from '../state.js';
@@ -27,19 +28,21 @@ export function anchorFor(type, cell) {
 /**
  * Pourquoi un bâtiment de ce type ne peut pas être posé avec son coin haut-gauche
  * en (x, y) : un court texte à montrer au joueur (« eau », « arbre »,
- * « déjà occupé (Four) »…), ou null si rien ne l'empêche.
+ * « déjà occupé (Four) »…), ou null si rien ne l'empêche. `ignore` : bâtiments qui ne
+ * comptent pas comme des obstacles (ceux qu'on déplace, le tapis qu'un splitter remplace).
  * Chaque couche qu'il occupe doit être libre. Le sous-sol passe sous tout, même l'eau.
  */
-export function placementProblem(type, x, y) {
+export function placementProblem(type, x, y, ignore = null) {
   const { w, h, kind } = BUILDINGS[type];
   const layers = layersOf(type);
   let onOre = false;
   for (const [cx, cy] of footprint(x, y, w, h)) {
     if (!inBounds(cx, cy)) return t('problem.offMap');
     const i = cellIndex(cx, cy);
+    if (!game.explored[i]) return t('problem.fog');
     for (const layer of layers) {
       const other = gridOf(layer)[i];
-      if (other) return t(layer === 'under' ? 'problem.takenUnder' : 'problem.taken', { name: buildingName(other.type) });
+      if (other && !ignore?.has(other)) return t(layer === 'under' ? 'problem.takenUnder' : 'problem.taken', { name: buildingName(other.type) });
     }
     const terrain = layers.includes('surface') && terrainProblem(game.map, i);
     if (terrain) return terrain;
@@ -51,7 +54,10 @@ export function placementProblem(type, x, y) {
 }
 
 /** Vrai si un bâtiment de ce type peut être posé avec son coin haut-gauche en (x, y). */
-export const canPlace = (type, x, y) => placementProblem(type, x, y) === null;
+export const canPlace = (type, x, y, ignore = null) => placementProblem(type, x, y, ignore) === null;
+
+/** Le bâtiment qui a cet identifiant, s'il est toujours sur la carte. */
+export const buildingById = (id) => game.byId.get(id) ?? null;
 
 /** Type de minerai le plus présent sous une zone. */
 function majorityOre(x, y, w, h) {
@@ -65,9 +71,9 @@ function majorityOre(x, y, w, h) {
 }
 
 /** Crée l'objet bâtiment avec les champs propres à sa famille. */
-function createBuilding(type, x, y, dir) {
+function createBuilding(type, x, y, dir, id = game.nextId++) {
   const def = BUILDINGS[type];
-  const b = { type, kind: def.kind, x, y, w: def.w, h: def.h, dir };
+  const b = { id, type, kind: def.kind, x, y, w: def.w, h: def.h, dir };
   b.flow = [];              // items sortis récemment (voir sim/flow.js)
   b.placedAt = game.tick;
   switch (def.kind) {
@@ -109,6 +115,10 @@ function createBuilding(type, x, y, dir) {
       b.flash = 0;
       b.anim = 0;
       break;
+    case 'storage':
+      b.slots = Array(def.slots).fill(null); // chaque emplacement : { item, count } ou null
+      b.outputOpen = false;                   // fermé : il garde tout ; ouvert : il ressort par l'avant
+      break;
   }
   return b;
 }
@@ -120,6 +130,8 @@ export function placeBuilding(type, x, y, dir = RIGHT, props = {}) {
 
 function occupy(b) {
   game.buildings.push(b);
+  game.byId.set(b.id, b);
+  revealAround(b); // chaque bâtiment éclaire autour de lui
   for (const layer of layersOf(b.type)) {
     for (const [cx, cy] of footprint(b.x, b.y, b.w, b.h)) gridOf(layer)[cellIndex(cx, cy)] = b;
   }
@@ -129,6 +141,7 @@ function occupy(b) {
 /** Retire un bâtiment de la carte sans le détruire (pour le déplacer). */
 export function liftBuilding(b) {
   game.buildings.splice(game.buildings.indexOf(b), 1);
+  game.byId.delete(b.id);
   for (const layer of layersOf(b.type)) {
     for (const [cx, cy] of footprint(b.x, b.y, b.w, b.h)) gridOf(layer)[cellIndex(cx, cy)] = null;
   }
@@ -139,8 +152,8 @@ export function liftBuilding(b) {
  * venait d'être posé. Il garde sa place, sa direction, sa forme, ses priorités et ses filtres.
  */
 export function emptyBuilding(b) {
-  const keep = { shape: b.shape, priority: b.priority, filters: b.filters };
-  Object.assign(b, createBuilding(b.type, b.x, b.y, b.dir));
+  const keep = { shape: b.shape, priority: b.priority, filters: b.filters, outputOpen: b.outputOpen };
+  Object.assign(b, createBuilding(b.type, b.x, b.y, b.dir, b.id));
   for (const [name, value] of Object.entries(keep)) if (value !== undefined) b[name] = value;
   b.stalled = false;
 }
@@ -150,6 +163,9 @@ export function putBackBuilding(b) {
   if (b.kind === 'drill') b.ore = majorityOre(b.x, b.y, b.w, b.h);
   return occupy(b);
 }
+
+/** Remet sur la carte un bâtiment lu dans une sauvegarde, tel quel (voir world/save.js). */
+export const restoreBuilding = (saved) => occupy(saved);
 
 /** Enlève un bâtiment. Le dépôt ne peut pas être enlevé. */
 export function removeBuilding(b) {

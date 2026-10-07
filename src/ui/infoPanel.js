@@ -8,7 +8,7 @@ import { BELT_SPEED, TILE } from '../config.js';
 import { RIGHT, LEFT, turnLeft, turnRight } from '../core/grid.js';
 import { BUILDINGS, inputCapacity, isUnderground, outputCapacity } from '../data/buildings.js';
 import { ITEMS } from '../data/items.js';
-import { filterFor, priorityOrder, raisePriority, splitterOutputs, toggleFilter } from '../data/splitterShapes.js';
+import { filterFor, priorityOrder, raisePriority, relativeSide, splitterOutputs } from '../data/splitterShapes.js';
 import { mergerInputs } from '../data/mergerShapes.js';
 import { on } from '../core/events.js';
 import { buildingName, decimal, itemName, shapeLabel, t } from '../i18n/index.js';
@@ -17,7 +17,9 @@ import { game, ui, view } from '../state.js';
 import { flowSummary } from '../sim/flow.js';
 import { productionRate } from '../sim/machines.js';
 import { makeCanvas } from '../render/pen.js';
-import { playSound } from '../audio/sounds.js';
+import { issue } from '../sim/commands.js';
+import { isStockItem } from '../world/inventory.js';
+import { stackSize } from '../sim/storage.js';
 import { beltColors, drawBelt, drawFilter, drawMerger, drawSmartSplitter, drawSplitter, drawTunnel, drawUnderBelt, filterKey } from '../render/sprites/belts.js';
 import { itemIconUrl } from '../render/sprites/items.js';
 import { machineSprite } from '../render/sprites/machines.js';
@@ -37,12 +39,14 @@ export function initInfoPanel() {
     e.stopPropagation();
     const b = shownFor;
     const raise = e.target.closest('[data-raise]');
-    if (raise && b?.priority) b.priority = raisePriority(b.priority, b.dir, b.shape, Number(raise.dataset.raise));
+    if (e.target.closest('[data-take]') && b) issue({ type: 'takeOutput', id: b.id });
+    if (e.target.closest('[data-output]') && b?.kind === 'storage') issue({ type: 'setStorageOutput', id: b.id, open: !b.outputOpen });
+    if (raise && b?.priority) {
+      issue({ type: 'setPriority', id: b.id, priority: raisePriority(b.priority, b.dir, b.shape, Number(raise.dataset.raise)) });
+    }
     const chip = e.target.closest('[data-filter-side]');
     if (chip && b?.filters) {
-      toggleFilter(b.filters, b.dir, Number(chip.dataset.filterSide), chip.dataset.item);
-      playSound('click');
-      showChipTooltip(chip);
+      issue({ type: 'toggleFilter', id: b.id, side: relativeSide(b.dir, Number(chip.dataset.filterSide)), item: chip.dataset.item });
     }
   });
   // Info-bulle des icônes d'items du filtre : tout de suite, et elle reste même si la
@@ -52,7 +56,10 @@ export function initInfoPanel() {
     if (chip) showChipTooltip(chip);
     else tooltip.hidden = true;
   });
-  panel.addEventListener('pointerleave', () => { tooltip.hidden = true; });
+  panel.addEventListener('pointerleave', () => {
+    tooltip.hidden = true;
+    tipFor = null;
+  });
   // Nouvelle langue : la fiche ouverte est reconstruite (bouton de fermeture compris).
   on('lang:changed', () => { shownFor = null; });
 }
@@ -61,21 +68,29 @@ const tooltip = Object.assign(document.createElement('div'), { id: 'chipTooltip'
 document.body.append(tooltip);
 
 /** Familles d'items, d'après leur forme (voir data/items.js). */
-const FAMILY = { ore: 'family.ore', ingot: 'family.ingot', plate: 'family.product', wire: 'family.product' };
+const FAMILY = { ore: 'family.ore', ingot: 'family.ingot', plate: 'family.product', wire: 'family.product', belt: 'family.part' };
 /** « l'envoyer à gauche », « tout droit », « à droite ». */
 const toward = (dir, side) => t(`toward.${sideKey(dir, side)}`);
 
-/** Nom de l'item, sa famille, et ce que fera le clic, au-dessus de l'icône survolée. */
+/** Icône d'item survolée : { item, side, rect }. Gardée pour réécrire l'info-bulle après un clic. */
+let tipFor = null;
+
 function showChipTooltip(chip) {
+  tipFor = { item: chip.dataset.item, side: Number(chip.dataset.filterSide), rect: chip.getBoundingClientRect() };
+  renderChipTooltip();
+}
+
+/** Nom de l'item, sa famille, et ce que fera le clic, au-dessus de l'icône survolée. */
+function renderChipTooltip() {
   const b = shownFor;
-  if (!b?.filters) return;
-  const type = chip.dataset.item, side = Number(chip.dataset.filterSide);
+  if (!b?.filters || !tipFor) return;
+  const { item: type, side } = tipFor;
   const chosen = filterFor(b.filters, b.dir, side).includes(type);
   const family = FAMILY[ITEMS[type].shape];
   tooltip.innerHTML = `<b>${itemName(type)}</b>${family ? ` <span class="ip-muted">· ${t(family)}</span>` : ''}<br>`
     + `<small>${t(chosen ? 'panel.filter.stop' : 'panel.filter.send', { toward: toward(b.dir, side) })}</small>`;
   tooltip.hidden = false;
-  const r = chip.getBoundingClientRect();
+  const r = tipFor.rect;
   const w = tooltip.offsetWidth, h = tooltip.offsetHeight;
   tooltip.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2))}px`;
   tooltip.style.top = `${r.top - h - 6 < 8 ? r.bottom + 6 : r.top - h - 6}px`;
@@ -100,6 +115,8 @@ export function updateInfoPanel() {
   if (shownFor !== b) build(b);
   fill(info);
   place(b);
+  // Le réglage vient de changer (la commande est appliquée un pas plus tard) : on suit.
+  if (!tooltip.hidden) renderChipTooltip();
 }
 
 // ---------- Ce qu'on montre ----------
@@ -110,7 +127,34 @@ export function updateInfoPanel() {
  */
 function describe(b) {
   if (isConveyor(b)) return describeConveyor(b);
+  if (b.kind === 'storage') return describeStorage(b);
   return describeMachine(b);
+}
+
+/** Conteneur : ses emplacements (icône, nombre / taille du paquet), sa sortie, et « Prendre ». */
+function describeStorage(b) {
+  const used = b.slots.filter(Boolean).length;
+  const status = used === b.slots.length
+    ? { label: t('panel.storage.full'), tone: 'warn' }
+    : { label: t('panel.storage.used', { n: used, total: b.slots.length }), tone: used ? 'ok' : 'idle' };
+  const slots = b.slots.map((slot) => (slot
+    ? `<div class="ip-slot" title="${itemName(slot.item)}"><img class="ip-item" src="${itemIconUrl(slot.item)}" alt="">
+         <b${slot.count >= stackSize(slot.item) ? ' class="full"' : ''}>${slot.count}</b><span>/${stackSize(slot.item)}</span></div>`
+    : '<div class="ip-slot empty"></div>')).join('');
+  const takeable = b.slots.reduce((n, s) => n + (s && isStockItem(s.item) ? s.count : 0), 0);
+  const take = takeable
+    ? `<button type="button" class="ip-take" data-take title="${t('panel.take.title')}">${t('panel.take', { n: takeable })}</button>` : '';
+  return {
+    title: buildingName(b.type),
+    status,
+    sections: [
+      { label: t('panel.storage.contents'), html: `<div class="ip-slots">${slots}</div>${take}` },
+      { label: t('panel.storage.output'), aside: t('panel.storage.output.aside'), html: `
+        <button type="button" class="ip-toggle" data-output aria-pressed="${b.outputOpen}">
+          ${t(b.outputOpen ? 'panel.storage.open' : 'panel.storage.closed')}
+        </button>` },
+    ],
+  };
 }
 
 function describeMachine(b) {
@@ -123,21 +167,32 @@ function describeMachine(b) {
   else if (outFull) status = { label: t('panel.status.outputFull'), tone: 'warn' };
 
   const busy = b.kind === 'drill' ? b.working : !!b.current;
-  const recipes = b.kind === 'drill' ? [[null, b.ore]] : Object.entries(def.recipes);
-  const making = busy
-    ? recipeHtml(b.kind === 'drill' ? null : b.currentInput, b.kind === 'drill' ? b.ore : b.current)
-    : `<span class="ip-muted">${t('panel.recipes')}</span>${recipes.map(([from, to]) => recipeHtml(from, to)).join('<span class="ip-sep">·</span>')}`;
+  let making;
+  if (def.assembly) {
+    making = assemblyHtml(def.assembly);
+  } else {
+    const recipes = b.kind === 'drill' ? [[null, b.ore]] : Object.entries(def.recipes);
+    making = busy
+      ? recipeHtml(b.kind === 'drill' ? null : b.currentInput, b.kind === 'drill' ? b.ore : b.current)
+      : `<span class="ip-muted">${t('panel.recipes')}</span>${recipes.map(([from, to]) => recipeHtml(from, to)).join('<span class="ip-sep">·</span>')}`;
+  }
 
   const stocks = [];
   if (inputCapacity(b)) stocks.push(stockHtml(t('panel.input'), b.inputs, inputCapacity(b)));
   if (outputCapacity(b)) stocks.push(stockHtml(t('panel.output'), b.outputs, outputCapacity(b)));
+  // Ce qu'elle a fabriqué pour l'inventaire (des tapis…) : un bouton pour le prendre.
+  const takeable = b.outputs.filter(isStockItem).length;
+  if (takeable) {
+    stocks.push(`<button type="button" class="ip-take" data-take title="${t('panel.take.title')}">${t('panel.take', { n: takeable })}</button>`);
+  }
 
   const { actual, max } = productionRate(b);
   return {
     title: buildingName(b.type),
     status,
     sections: [
-      { label: t('panel.production'), aside: t('panel.perItem', { s: decimal(def.time) }),
+      { label: t('panel.production'),
+        aside: def.assembly ? t('panel.perCraft', { s: decimal(def.time), n: def.assembly.count }) : t('panel.perItem', { s: decimal(def.time) }),
         html: `<div class="ip-row">${making}</div>${bar(busy ? b.progress : 0)}` },
       { label: t('panel.stock'), html: stocks.join('') },
       { label: t('panel.rate'), html: rateHtml(actual, max) },
@@ -233,6 +288,9 @@ const perMinute = (n) => (n < 10 ? decimal(n) : String(Math.round(n)));
 /** « 12 / min » */
 const rate = (n) => t('panel.perMinute', { n: perMinute(n) });
 const icon = (type) => `<img class="ip-item" src="${itemIconUrl(type)}" alt="${itemName(type)}" title="${itemName(type)}">`;
+/** Ex. [plaque] + [fil] → [tapis] ×2 */
+const assemblyHtml = ({ inputs, output, count }) =>
+  `${Object.keys(inputs).map(icon).join('<span class="ip-sep">+</span>')}<span class="ip-sep">→</span>${icon(output)}<span>×${count}</span>`;
 const recipeHtml = (from, to) => `${from ? `${icon(from)}<span class="ip-sep">→</span>` : ''}${icon(to)}`;
 const bar = (fraction) => `<div class="ip-bar"><i style="width:${Math.round(fraction * 100)}%"></i></div>`;
 const gauge = (fraction) => `<div class="ip-gauge"><i style="width:${Math.round(Math.min(1, fraction) * 100)}%"></i></div>`;

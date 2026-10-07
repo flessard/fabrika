@@ -15,6 +15,12 @@ npm run dev      # serveur de développement, la page se recharge à chaque modi
 
 Puis ouvrir l'adresse affichée (souvent <http://localhost:5173>).
 
+Pour jouer à plusieurs, lancer aussi le serveur relais (port 3002) :
+
+```bash
+npm run relay
+```
+
 `npm run build` produit une version à publier dans `dist/`.
 
 ### Options dans l'adresse
@@ -23,10 +29,103 @@ Puis ouvrir l'adresse affichée (souvent <http://localhost:5173>).
 |---|---|
 | `?renderer=canvas` | Utilise l'ancien rendu Canvas 2D au lieu de PixiJS (pour comparer) |
 | `?stress` | Remplit la carte de boucles de tapis pleines d'items, pour mesurer la vitesse |
+| `?server=ws://…` | Adresse du serveur relais du multijoueur (par défaut : port 3002 de la même machine) |
 
 Le compteur sous la mini-carte affiche le rendu utilisé, les images par seconde et le temps de dessin.
 
+## Inventaire et Assembleur
+
+Les tapis ne sont pas illimités : une partie commence avec **50 tapis** dans l'inventaire
+(commun à toute l'équipe, affiché dans le HUD et sur le bouton Tapis). Poser un tapis, même
+souterrain, en dépense un ; l'effacer le rend. Sans stock, la pose est refusée (« plus de tapis
+en stock ») et un tracé trop long montre en rouge les cases qui ne seront pas posées.
+
+L'**Assembleur** (touche `E`) fabrique des tapis : **1 plaque de fer + 1 fil de cuivre → 2 tapis**,
+en 2 s. C'est une recette à plusieurs ingrédients (`assembly` dans `data/buildings.js`), avec
+une réserve par ingrédient. Pour récupérer les tapis : le bouton **Prendre** de sa fiche, ou les
+envoyer au dépôt par un tapis (un objet de construction livré va dans l'inventaire).
+
+Ce qui coûte quelque chose se règle avec `cost` dans `data/buildings.js` (pour l'instant, les
+tapis) ; l'inventaire est dans `src/world/inventory.js`, et fait partie de l'état de la partie.
+
+## Tapis : une seule entrée
+
+Un tapis n'a qu'**une entrée** : son arrière, ou un côté s'il fait un coin. Il n'a qu'une
+sortie, devant. Donc :
+
+- **réunir** deux lignes demande un **groupeur** ;
+- **séparer** une ligne demande un **splitter**, un **filtre** ou un **prioritaire**.
+
+Poser, tracer, copier, déplacer ou tourner quelque chose qui donnerait deux entrées à un tapis
+(un tapis, une machine ou un splitter qui déverse sur le côté d'une ligne déjà alimentée) est
+refusé : « deux entrées sur un tapis : il faut un groupeur ». Dans la simulation, un tapis
+n'accepte d'items que par son entrée (`inputSide`, `mergeProblem` dans `src/sim/belt.js`).
+
+## Conteneur
+
+Le **Conteneur** (touche `B`, 2 × 2 cases) garde des items : **6 emplacements**, chacun d'une seule sorte,
+jusqu'à la taille de son paquet (`stack` dans `data/items.js`) :
+
+| Item | Paquet |
+|---|---|
+| Tapis | 20 |
+| Minerais, charbon, lingots, plaques | 50 |
+| Fil de cuivre | 100 |
+
+Les tapis et machines qui arrivent sur ses côtés le remplissent tant qu'il y a de la place.
+Sa **sortie** (devant) se règle dans sa fiche : fermée, il garde tout ; ouverte, il renvoie ses
+items un par un (une réserve tampon sur une ligne). Sa fiche montre les emplacements, et
+**Prendre** met les objets de construction (tapis) dans l'inventaire. Code : `src/sim/storage.js`.
+
+## Exploration
+
+La carte fait **128 × 96 cases** et ne se voit pas d'un coup : un **brouillard** la couvre.
+Au départ, seule une zone autour du dépôt est découverte, avec les premiers gisements (fer,
+cuivre, charbon). Chaque bâtiment éclaire un rayon autour de lui : 16 cases pour le dépôt,
+6 pour les foreuses, fours et presses, 4 pour les tapis, splitters, tunnels… On explore donc
+en étirant des tapis vers l'inconnu ; ce qui est découvert le reste. On ne construit pas dans
+le brouillard (« zone inexplorée »). La mini-carte est elle aussi dans le brouillard.
+
+La zone découverte (`game.explored`, `src/world/fog.js`) fait partie de l'état de la partie :
+elle est sauvegardée et identique pour tous les joueurs. Le brouillard est dessiné dans une
+image (`src/render/fogImage.js`), refaite seulement quand la zone découverte change.
+
+## Niveaux
+
+Une partie est une suite de **commandes à livrer au dépôt** (`src/data/levels.js`). Chaque
+niveau demande une ou plusieurs ressources ; dès que toute la commande est livrée, on passe
+au suivant. Seuls les items de la commande comptent, et une ressource complète ne compte plus.
+
+| Niveau | Commande |
+|---|---|
+| 1 · Premiers lingots | 10 lingots de fer |
+| 2 · Plaques de fer | 20 plaques de fer |
+| 3 · Le cuivre | 20 plaques de fer, 15 fils de cuivre |
+| 4 · Charbon et tri | 40 plaques, 30 fils, 30 charbons |
+| 5 · Grande commande | 100 plaques, 80 fils, 60 charbons, 40 lingots de cuivre |
+
+La difficulté monte par les quantités, le nombre de ressources et des produits plus
+transformés. Après le dernier niveau, la partie continue librement. Une **carte de niveau**
+présente la commande au début et après chaque niveau réussi ; le **panneau du HUD** la suit
+ressource par ressource. Le niveau fait partie de l'état de l'usine (`sim/levels.js`) :
+il est sauvegardé et identique pour tous les joueurs d'une partie à plusieurs.
+
+## Écran titre
+
+Au lancement, un menu s'affiche par-dessus la carte, qui tourne déjà en fond (assombrie,
+la caméra dérive doucement, une usine de démonstration à trois lignes y travaille, sans son
+ni message) : **Nouvelle partie**
+(cette carte, à neuf : seulement le dépôt de livraison, avec un gisement de fer tout près),
+**Continuer** (s'il y a une sauvegarde), **Héberger une partie** et **Rejoindre une partie**
+(avec le code de 4 lettres). Le bouton **Menu** du HUD y ramène ; pendant une partie à
+plusieurs, revenir au menu quitte la partie. Le logo et le petit tapis animé sont dessinés
+par le code (`src/ui/title.js`).
+
 ## Rendu
+
+La caméra glisse sans à-coups : le rendu arrondit sa position au pixel de jeu (pour garder
+le pixel art net) et le canevas est décalé de la fraction restante, au pixel d'écran près
+(`applySubpixelOffset` dans `src/input/camera.js`).
 
 Le dessin passe par [PixiJS](https://pixijs.com), qui utilise la carte graphique
 (WebGPU si le navigateur le permet, sinon WebGL). Le pixel art est toujours dessiné
@@ -38,7 +137,7 @@ chaque résultat devient une texture réutilisée.
 | Action | Contrôle |
 |---|---|
 | Se déplacer sur la carte | glisser (outil Déplacer), WASD / flèches, trackpad |
-| Zoom | `+` / `−`, molette |
+| Zoom | molette ou pincement (progressif, vers la souris) ; `+` / `−` (crans entiers, pixels parfaitement nets) |
 | Choisir un outil | `1` à `9`, `0` pour Sélection, `T` pour Tunnel, `I` pour Filtre |
 | Voir le sous-sol / revenir en surface | `U`, ou le bouton Sous-sol |
 | Tunnel : passer de l'entrée à la sortie | `F` (après une entrée, l'outil passe tout seul à la sortie) |
@@ -48,7 +147,9 @@ chaque résultat devient une texture réutilisée.
 | Ouvrir la fiche d'un bâtiment (stock, cadence, débit) | clic avec l'outil Déplacer |
 | Régler un filtre (quels items vont dans quelle sortie) | dans sa fiche, qui s'ouvre quand on le pose : clic sur les icônes d'items de chaque sortie |
 | Fermer la fiche | `Échap` ou × |
+| Menu (reprendre, sauvegarder, charger, son, langue, multijoueur, aide, menu principal) | `Échap` quand il n'y a plus rien à annuler, ou le bouton Menu du HUD |
 | Couper le son | `M` |
+| Sauvegarder / reprendre la partie | `Ctrl` / `⌘` + `S`, ou Sauvegarder et Charger dans le menu Échap |
 | Tracer des tapis | glisser avec l'outil Tapis : le chemin s'affiche en aperçu et les tapis sont posés au relâchement (revenir en arrière raccourcit, `Échap` ou clic droit annule) |
 | Effacer | clic droit ou Gomme |
 | Sélectionner plusieurs bâtiments | glisser avec l'outil Sélection, ou `Maj` + glisser avec Déplacer |
@@ -58,6 +159,7 @@ chaque résultat devient une texture réutilisée.
 ## Organisation du code
 
 ```
+server/relay.js         serveur relais du multijoueur (Node)
 index.html              structure de la page (HUD, mini-carte, palette)
 styles/main.css         style de l'interface
 assets/                 fichiers d'art et de son (voir assets/README.md)
@@ -65,6 +167,8 @@ src/
   main.js               point d'entrée : branche les modules et lance la boucle de jeu
   config.js             tous les réglages (taille de carte, vitesses, zoom…)
   i18n/                 langues : t('clé'), dictionnaires fr.js et en.js
+  net/
+    client.js           multijoueur : connexion au relais, tours, état de l'usine, empreintes
   state.js              l'état partagé : game (la partie), view (caméra), ui (sélection)
 
   core/                 outils de base, sans rien de propre au jeu
@@ -77,22 +181,28 @@ src/
     items.js            les items (minerai, lingot, plaque…)
     buildings.js        les bâtiments, leurs recettes, et les outils de la palette
     splitterShapes.js   les formes du splitter
+    levels.js           les niveaux : la commande à livrer pour chacun
 
   world/                la carte et ce qui est posé dessus
     terrain.js          génération procédurale (sol, décor, gisements)
     buildings.js        poser, trouver, enlever des bâtiments (surface et sous-sol)
-    starterFactory.js   l'usine de départ
+    starterFactory.js   le départ d'une partie (le dépôt) et l'usine de démonstration
     map.js              démarrer une nouvelle carte
+    fog.js              brouillard : ce qui est découvert, autour des bâtiments
+    inventory.js        inventaire : objets en stock, dépenser, rembourser
+    save.js             sauvegarder, charger, empreinte de l'usine
     stressTest.js       boucles de tapis pour le mode ?stress
 
   sim/                  la simulation (aucun dessin ici)
-    simulation.js       un pas de simulation
+    simulation.js       un pas de simulation (commandes des joueurs, puis bâtiments)
+    commands.js         les commandes : la seule façon de modifier l'usine
     transfer.js         faire passer un item d'une case à la suivante
     belt.js             tapis et jonctions
     splitter.js         splitters et suggestions de formes
-    machines.js         foreuse, four, presse, dépôt
+    machines.js         foreuse, four, presse, assembleur, dépôt
+    storage.js          conteneur : emplacements, paquets, sortie
     particles.js        fumée, étincelles, icônes
-    goal.js             objectif du tableau
+    levels.js           progression : niveau en cours, ce qui a été livré pour lui
 
   render/               le dessin (lit l'état, ne le modifie pas)
     pixiRenderer.js     rendu PixiJS (par défaut)
@@ -100,12 +210,14 @@ src/
     scene.js            ce que les deux rendus calculent pareil (visible, curseur…)
     pen.js              outils de dessin pixel par pixel
     terrainImage.js     image du terrain (fabriquée une fois par carte)
+    fogImage.js         image du brouillard (refaite quand la zone découverte change)
     minimap.js          mini-carte
     sprites/            dessin des items, des tapis et des machines
 
   input/                ce que fait le joueur
     controls.js         souris, trackpad, clavier
-    actions.js          poser, effacer, tourner, tracer des tapis
+    actions.js          poser, effacer, tourner, tracer des tapis (émet des commandes)
+    feedback.js         sons et réactions quand une commande est appliquée
     selection.js        sélectionner plusieurs bâtiments, les déplacer, copier, effacer
     camera.js           caméra, zoom, limites de la carte
     splitterPicker.js   choix de la forme du splitter
@@ -114,10 +226,63 @@ src/
     hud.js              objectif, numéro de carte, messages
     toolbar.js          palette d'outils
     hint.js             bulle d'aide
+    pauseMenu.js        menu Échap (sauvegarde, son, langue, multijoueur, aide)
+    levelCard.js        carte de niveau (la commande à livrer, niveau réussi)
     selectionMenu.js    menu au-dessus de la sélection (déplacer, copier, effacer)
     perf.js             compteur d'images par seconde
     cursors.js          curseurs de souris en pixel art
+    multiplayer.js      ligne Multijoueur du HUD, messages, curseurs des autres joueurs
+    title.js            écran titre (menu de démarrage, logo, tapis animé)
 ```
+
+### Commandes et sauvegarde
+
+L'interface ne modifie jamais l'usine elle-même. Chaque action du joueur (poser, effacer,
+tourner, changer une forme, régler un filtre ou des priorités, tracer des tapis, déplacer,
+copier ou effacer un groupe) devient une **commande** : des données simples, mises en file
+par `issue()` et appliquées au début du pas de simulation suivant (`src/sim/commands.js`).
+Le handler de la commande revérifie tout ; l'aperçu sous le curseur n'est qu'un aperçu.
+L'événement `command:done` permet ensuite à l'interface de réagir (son, refus, fiche ouverte).
+
+La simulation est **déterministe** : la même partie et les mêmes commandes, dans le même ordre,
+donnent la même usine. Le hasard ne sert qu'aux effets visuels (fumée, poussière, étincelles).
+Chaque bâtiment a un identifiant stable (`b.id`), y compris dans les réservations de cases.
+
+La **sauvegarde** (`src/world/save.js`) garde la graine (le terrain se regénère), le tick, les
+livraisons et tous les bâtiments dans leur ordre, avec leur état complet. Une partie rechargée
+continue exactement comme elle se serait poursuivie. `fingerprint()` donne une empreinte de
+l'usine : deux usines identiques ont la même empreinte.
+
+C'est la base d'un futur multijoueur : il suffira de faire passer les commandes par le réseau
+(chacune porte déjà le numéro du joueur) et de comparer les empreintes pour détecter une
+désynchronisation.
+
+### Multijoueur (jusqu'à 4 joueurs)
+
+Dans le menu Échap, **Héberger** ouvre une partie avec l'usine actuelle et donne un code de 4 lettres ;
+les autres joueurs tapent ce code et cliquent **Rejoindre**. Chacun voit le curseur des autres
+(un cadre de sa couleur avec son nom). **Quitter** fait continuer seul avec l'usine telle quelle.
+
+Le multijoueur est en **lockstep** : chaque joueur fait tourner la même usine chez lui, et seules
+les commandes voyagent.
+
+- `server/relay.js` (Node + `ws`) ne simule rien. Toutes les 50 ms, il envoie un **tour** qui
+  autorise 3 pas de simulation de plus et contient les commandes reçues entre-temps, dans l'ordre.
+  Il sert donc d'horloge commune.
+- `src/net/client.js` envoie les commandes au serveur au lieu de les appliquer, prévoit celles des
+  tours à leur tick, et limite la simulation au tick autorisé (`maxTick()`). Un joueur en retard
+  (onglet en arrière-plan, partie rejointe) rattrape en simulant plus vite.
+- **Rejoindre** : le serveur demande l'état de l'usine (une sauvegarde) à un joueur déjà là et
+  l'envoie au nouveau, avec les tours qui ont suivi (il en garde 2 minutes).
+- **Désynchronisation** : toutes les 3 s (180 ticks), chaque joueur envoie l'empreinte de son usine.
+  Celui qui diffère du joueur de référence (le plus petit numéro) reçoit l'usine d'un autre.
+- Pendant une partie à plusieurs, « Nouvelle carte » et « Charger » sont désactivés ; sauvegarder
+  reste possible (dans son propre navigateur).
+- L'adresse `http://localhost:3002/` du relais affiche les parties en cours, avec le nombre
+  d'empreintes comparées et de divergences.
+
+Pour jouer depuis d'autres ordinateurs, le serveur de jeu et le relais doivent être joignables
+sur le réseau (Vite écoute aujourd'hui seulement sur 127.0.0.1).
 
 ### Langues
 
@@ -163,8 +328,10 @@ La simulation la prend en charge sans autre changement.
 
 ## Ce qu'il y a dans le prototype
 
-- Carte de 64 × 48 cases générée procéduralement (lacs, arbres, gisements de fer, cuivre, charbon)
-- Tapis qui se raccordent automatiquement (droit, coin, T, croix) et qui alternent les entrées aux jonctions
+- Carte de 128 × 96 cases générée procéduralement (lacs, arbres, gisements de fer, cuivre, charbon),
+  à découvrir : un brouillard recule autour des bâtiments
+- Tapis à une seule entrée (droit ou coin) : deux lignes se réunissent par un groupeur et se séparent
+  par un splitter, un filtre ou un prioritaire ; une jonction directe est refusée à la pose
 - Aperçu sous le curseur qui montre les raccords avant de poser
 - Filtres : chaque sortie prend les items choisis dans sa fiche (une sortie sans choix prend
   le reste), avec des pastilles de couleur sur le tapis pour voir ce qui part où
@@ -180,6 +347,8 @@ La simulation la prend en charge sans autre changement.
 - Entrées et sorties des machines : un raccord (bouche sombre et pinces vertes pour une entrée,
   orange pour une sortie) là où un tapis est branché ; ailleurs, des flèches montrent où brancher
   (la sortie toujours, toutes les entrées en survolant une machine ou avec un outil de tapis)
+- Multijoueur jusqu'à 4 joueurs (lockstep, code de partie, curseurs des autres, resynchronisation)
+- Sauvegarde de la partie dans le navigateur (`Ctrl`/`⌘` + `S`), qui reprend à l'identique
 - Fiche de chaque bâtiment : état, stock, cadence réelle et maximale, débit des tapis
 - Sons rétro générés par le code, avec son spatial (plus fort près des usines)
-- Objectif de livraison au dépôt
+- 5 niveaux de commandes à livrer au dépôt, de plus en plus longues

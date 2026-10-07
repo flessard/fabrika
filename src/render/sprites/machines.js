@@ -1,4 +1,4 @@
-// Dessin des machines (foreuse, four, presse) et du dépôt.
+// Dessin des machines (foreuse, four, presse, assembleur) et du dépôt.
 // Chaque machine = un sprite fixe (fabriqué une fois) + des parties animées par-dessus.
 import { TILE } from '../../config.js';
 import { outputCapacity } from '../../data/buildings.js';
@@ -89,6 +89,54 @@ const STATIC_SPRITES = {
     rect(1, 30, 30, 1, P.soot);
   }),
 
+  assembler: () => makeCanvas(32, 32, () => {
+    rect(0, 0, 32, 32, P.black);
+    // Toit bleu avec la fenêtre de travail (le bras est animé)
+    rect(1, 1, 30, 17, P.ocean);
+    rect(1, 1, 30, 1, P.sky);
+    rect(1, 17, 30, 1, P.night);
+    for (const [x, y] of [[2, 2], [29, 2], [2, 15], [29, 15]]) rect(x, y, 1, 1, P.cyan);
+    rect(5, 3, 22, 13, P.black);
+    rect(6, 4, 20, 11, P.night);
+    rect(6, 4, 20, 1, P.silver);              // rail du bras
+    rect(6, 12, 20, 3, P.slate);               // petit tapis au fond
+    for (let x = 7; x < 26; x += 3) rect(x, 13, 1, 1, P.steel);
+    // Façade : écran, grilles, rayures
+    rect(1, 18, 30, 8, P.steel);
+    rect(1, 18, 30, 1, P.silver);
+    rect(3, 20, 8, 4, P.black);
+    for (let i = 0; i < 3; i++) rect(20, 20 + i * 2, 8, 1, P.slate);
+    hazardStripes(1, 26, 30, 4);
+    rect(1, 30, 30, 1, P.soot);
+  }),
+
+  container: () => makeCanvas(32, 32, () => {
+    rect(0, 0, 32, 32, P.black);
+    // Toit : quatre caisses rangées, vues de haut
+    rect(1, 1, 30, 17, P.bark);
+    rect(1, 1, 30, 1, P.clay);
+    rect(1, 17, 30, 1, P.soot);
+    for (const [x, y] of [[2, 2], [16, 2], [2, 10], [16, 10]]) {
+      rect(x, y, 14, 7, P.black);
+      rect(x + 1, y + 1, 12, 5, P.clay);
+      rect(x + 1, y + 1, 12, 1, P.sand);
+      rect(x + 1, y + 3, 12, 1, P.bark);              // planche
+      rect(x + 3, y + 1, 1, 5, P.steel);              // cerclages
+      rect(x + 10, y + 1, 1, 5, P.steel);
+    }
+    // Façade : porte d'entrepôt en tôle ondulée, avec sa poignée et sa plaque
+    rect(1, 18, 30, 8, P.steel);
+    rect(1, 18, 30, 1, P.silver);
+    rect(4, 19, 24, 7, P.black);
+    rect(5, 20, 22, 6, P.slate);
+    for (let x = 6; x < 27; x += 2) rect(x, 20, 1, 6, P.steel);
+    rect(15, 20, 2, 6, P.black);                      // milieu de la porte
+    rect(13, 22, 2, 2, P.amber);                      // poignées
+    rect(17, 22, 2, 2, P.amber);
+    hazardStripes(1, 26, 30, 4);
+    rect(1, 30, 30, 1, P.soot);
+  }),
+
   hub: () => makeCanvas(48, 48, () => {
     rect(0, 0, 48, 48, P.black);
     // Toit rose rayé et trappe de livraison
@@ -136,6 +184,11 @@ export function animationState(b, time) {
       return { lit: b.working ? 1 : 0, flicker: b.working ? Math.floor(time * 12) % 8 : 0 };
     case 'press':
       return { lit: b.working ? 1 : 0, piston: pressPistonOffset(b) };
+    case 'container':
+      return { open: b.outputOpen ? 1 : 0 }; // la goulotte de sortie n'apparaît que si elle est ouverte
+    case 'assembler':
+      // Le bras va et vient au-dessus du petit tapis pendant le travail.
+      return { lit: b.working ? 1 : 0, arm: b.working ? Math.round((Math.sin(b.anim * 3) + 1) * 7) : 7 };
     case 'hub':
       return {
         flag: Math.floor(((time * FLAG_SPEED) / (Math.PI * 2)) * FLAG_FRAMES) % FLAG_FRAMES,
@@ -190,6 +243,16 @@ const ANIMATE = {
     rect(sx + 10, sy + 4 + piston, 12, 1, P.white);
     rect(sx + 10, sy + 12 + piston, 12, 1, P.silver);
     rect(sx + 5, sy + 21, 6, 2, lit ? P.lime : P.forest);
+  },
+
+  assembler({ lit, arm }, sx, sy) {
+    const x = sx + 8 + arm;
+    if (lit) rect(x - 1, sy + 11, 4, 1, P.mist);      // la pièce qu'il assemble
+    rect(x, sy + 5, 2, 4, P.mist);                     // tige
+    rect(x - 1, sy + 9, 4, 1, P.yellow);               // pince
+    rect(x - 1, sy + 10, 1, 1, P.yellow);
+    rect(x + 2, sy + 10, 1, 1, P.yellow);
+    rect(sx + 4, sy + 21, 6, 2, lit ? P.cyan : P.ocean); // écran
   },
 
   hub({ flag, blink }, sx, sy) {
@@ -262,12 +325,12 @@ export function drawMachineBody(b, state, sx, sy, { shadow = true } = {}) {
   if (shadow) withAlpha(0.35, () => rect(sx + 3, sy + 4, b.w * TILE, b.h * TILE, P.black));
   currentCtx().drawImage(machineSprite(b.type), sx, sy);
   ANIMATE[b.type]?.(state, sx, sy);
-  if (b.kind !== 'hub') drawOutputChute(b, sx, sy);
+  if (b.kind !== 'hub' && !(b.kind === 'storage' && !state.open)) drawOutputChute(b, sx, sy);
 }
 
 /** Dessine une machine complète à l'écran en (sx, sy). `ghost` = aperçu avant de poser. */
 export function drawMachine(b, sx, sy, time, { ghost = false } = {}) {
   drawMachineBody(b, animationState(b, time), sx, sy, { shadow: !ghost });
   if (b.kind === 'hub') drawHubFlash(b, sx, sy);
-  else if (!ghost) drawProgressBar(b, sx, sy, time);
+  else if (!ghost && b.kind !== 'storage') drawProgressBar(b, sx, sy, time);
 }

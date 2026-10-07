@@ -68,6 +68,8 @@ button {
   cursor: var(--cursor-pointer, pointer);
 }
 button:hover { background: var(--line); }
+button:disabled { opacity: .45; cursor: var(--cursor-arrow, default); }
+button:disabled:hover { background: var(--panel-hi); }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* ---------- HUD (haut gauche) ---------- */
@@ -82,15 +84,103 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   gap: 8px;
 }
 .brand { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.brand-right { display: flex; align-items: center; gap: 8px; }
+#menuButton { padding: 1px 6px; font-size: 11px; }
 .brand b { font-size: 20px; letter-spacing: .02em; color: var(--accent); text-shadow: 0 2px 0 var(--void); }
 .brand span { font-size: 12px; color: var(--mute); letter-spacing: .08em; text-transform: uppercase; }
 
-.goal { display: grid; grid-template-columns: 28px 1fr auto; gap: 8px; align-items: center; }
-.goal canvas { width: 28px; height: 28px; image-rendering: pixelated; background: var(--void); border: 2px solid var(--panel-hi); }
-.goal-label { font-size: 13px; margin-bottom: 4px; }
-.barbg { height: 8px; background: var(--void); border: 1px solid var(--line); }
+/* Commande du niveau en cours : une ligne par ressource */
+.order { display: grid; gap: 5px; }
+.order-head { display: flex; justify-content: space-between; font-size: 13px; color: var(--accent); }
+.order-row { display: grid; grid-template-columns: 18px 1fr auto; gap: 2px 8px; align-items: center; font-size: 12px; }
+.order-row img { width: 18px; height: 18px; image-rendering: pixelated; grid-row: span 2; background: var(--void); padding: 2px; box-sizing: content-box; }
+.order-row b { font-variant-numeric: tabular-nums; color: var(--ink); }
+.order-row .barbg { grid-column: 2 / -1; }
+.order-row.done .order-name::after { content: " ✓"; color: var(--ok); }
+.order-row.done b { color: var(--ok); }
+.order-done { font-size: 12px; color: var(--ok); line-height: 1.4; }
+.barbg { height: 6px; background: var(--void); border: 1px solid var(--line); }
 .barbg i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .2s steps(4); }
-#goalNum { font-size: 14px; font-variant-numeric: tabular-nums; color: var(--accent); }
+
+/* Inventaire : les objets de construction en stock */
+.inventory { display: flex; align-items: center; gap: 8px; font-size: 12px; border-top: 2px solid var(--panel-hi); padding-top: 6px; }
+.inv-label { color: var(--mute); }
+.inv-item { display: flex; align-items: center; gap: 4px; }
+.inv-item img { width: 16px; height: 16px; image-rendering: pixelated; }
+.inv-item b { font-variant-numeric: tabular-nums; color: var(--ink); }
+.inv-item.empty b { color: var(--bad); }
+
+/* Nombre de tapis en stock, sur le bouton Tapis de la palette */
+.tool-count {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  font-style: normal;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+.tool-count.empty { color: var(--bad); }
+
+/* Conteneur : ses emplacements en grille, et le bouton de sa sortie */
+.ip-slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.ip-slot {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 26px;
+  padding: 3px 5px;
+  background: var(--void);
+  box-shadow: inset 0 0 0 2px var(--panel-hi);
+  font-variant-numeric: tabular-nums;
+}
+.ip-slot .ip-item { width: 16px; height: 16px; }
+.ip-slot b.full { color: var(--accent); }
+.ip-slot span { color: var(--mute); font-size: 10px; }
+.ip-slot.empty { opacity: .5; }
+.ip-toggle { justify-self: start; }
+.ip-toggle[aria-pressed="true"] { border-color: var(--ok); color: var(--ok); }
+
+/* Bouton « Prendre » de la fiche d'une machine */
+.ip-take { justify-self: start; margin-top: 4px; }
+
+/* Carte de niveau : la commande à livrer, en grand */
+#levelCard {
+  position: fixed;
+  top: 18%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 15;
+  width: min(340px, calc(100vw - 32px));
+  padding: 16px 18px 14px;
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  text-align: center;
+  box-shadow: inset 0 0 0 2px var(--panel-hi), 0 6px 0 var(--void), 0 0 0 4px rgba(254, 174, 52, .18);
+  animation: card-in .25s steps(5);
+}
+@keyframes card-in { from { transform: translate(-50%, -12px); opacity: 0; } }
+.lc-done { font-size: 18px; color: var(--ok); text-shadow: 0 2px 0 var(--void); }
+.lc-kicker { font-size: 11px; color: var(--mute); letter-spacing: .08em; text-transform: uppercase; }
+.lc-title { display: grid; gap: 2px; font-size: 12px; color: var(--mute); }
+.lc-title b { font-size: 22px; color: var(--accent); text-shadow: 0 2px 0 var(--void); }
+.lc-goals { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.lc-goal {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  width: 72px;
+  padding: 8px 4px 6px;
+  background: var(--void);
+  box-shadow: inset 0 0 0 2px var(--panel-hi);
+  font-size: 11px;
+  color: var(--mute);
+}
+.lc-goal img { width: 28px; height: 28px; image-rendering: pixelated; }
+.lc-goal b { font-size: 15px; color: var(--ink); }
+.lc-hint { margin: 0; font-size: 11px; color: var(--mute); line-height: 1.4; }
+.lc-go { justify-self: stretch; text-align: center; padding-left: 14px; }
 
 .meta-buttons { display: flex; gap: 4px; }
 .lang select {
@@ -106,6 +196,52 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--mute); }
 .help { font-size: 11px; color: var(--mute); line-height: 1.5; border-top: 2px solid var(--panel-hi); padding-top: 6px; }
 .help kbd { font-family: var(--ui); color: var(--ink); background: var(--void); padding: 0 4px; }
+
+/* ---------- Multijoueur ---------- */
+
+.mp { flex-wrap: wrap; }
+#mpCode {
+  width: 52px;
+  font-family: var(--ui);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  color: var(--ink);
+  background: var(--void);
+  border: 2px solid var(--panel-hi);
+  padding: 3px 5px;
+}
+#mpCode:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#mpCodeLbl { color: var(--accent); letter-spacing: .12em; align-self: center; }
+#mpPlayers { display: flex; gap: 3px; align-items: center; }
+.mp-player {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  font-size: 10px;
+  color: var(--void);
+  background: var(--player);
+  box-shadow: inset 0 0 0 1px var(--void);
+}
+.mp-player.you { outline: 2px solid var(--ink); outline-offset: 1px; }
+
+/* Souris des autres joueurs : la flèche pixel à leur couleur, avec leur nom à côté */
+#presence { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 2; }
+.presence { position: absolute; left: 0; top: 0; will-change: transform; }
+.presence img { display: block; image-rendering: pixelated; }
+.presence span {
+  position: absolute;
+  left: 18px;
+  top: 22px;
+  padding: 1px 4px;
+  font-size: 10px;
+  white-space: nowrap;
+  color: var(--void);
+  background: var(--player);
+  box-shadow: 0 0 0 1px var(--void);
+}
+.presence.elsewhere { opacity: .35; }
 
 /* ---------- Mini-carte (haut droite) ---------- */
 
@@ -209,6 +345,151 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 #selMenu kbd { font-family: var(--ui); font-size: 10px; color: var(--mute); background: var(--void); padding: 0 3px; margin-left: 2px; }
 #selMenu .sm-danger:hover { background: var(--bad); }
 #selMenu .sm-close { padding: 0 7px; font-size: 16px; line-height: 20px; }
+
+/* ---------- Menu Échap ---------- */
+
+body.paused :is(#hint, #selMenu, #levelCard, #chipTooltip, #infoPanel) { display: none !important; }
+#pause {
+  position: fixed;
+  inset: 0;
+  z-index: 18;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(24, 20, 37, .6);
+}
+.pause-card {
+  display: grid;
+  gap: 10px;
+  width: min(380px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  padding: 16px 18px;
+  box-shadow: inset 0 0 0 2px var(--panel-hi), 0 6px 0 var(--void), 0 0 0 4px rgba(254, 174, 52, .15);
+}
+.pause-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.pause-head b { font-size: 22px; color: var(--accent); text-shadow: 0 2px 0 var(--void); }
+.pause-head span { font-size: 11px; color: var(--mute); }
+.pause-page { display: grid; gap: 8px; }
+.pause-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  font-size: 13px;
+  padding: 6px 0;
+  border-top: 2px solid var(--panel-hi);
+}
+.pause-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; border-top: 2px solid var(--panel-hi); padding-top: 10px; }
+.pause-buttons .title-btn { font-size: 14px; padding: 8px 10px 8px 26px; }
+#pause .help { font-size: 12px; }
+.help-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 7px; }
+.help-list li { line-height: 1.5; color: var(--ink); }
+.help-list b { display: block; font-size: 11px; color: var(--accent); letter-spacing: .04em; text-transform: uppercase; }
+#pause .help kbd { font-family: var(--ui); color: var(--ink); background: var(--void); padding: 0 4px; }
+
+/* Pastille du HUD pendant une partie à plusieurs : le code et les joueurs */
+#hudOnline { display: flex; gap: 3px; align-items: center; font-size: 11px; }
+#hudOnline b { color: var(--accent); letter-spacing: .1em; margin-right: 2px; }
+#hudOnline .mp-player { width: 13px; height: 13px; font-size: 9px; }
+#hudOnline .mp-player.you { outline-width: 1px; }
+
+/* ---------- Écran titre ---------- */
+
+/* Pendant l'écran titre, seule la carte reste visible (assombrie) derrière le menu. */
+body.title :is(#hud, #miniWrap, #bar, #hint, #infoPanel, #selMenu, #presence, #chipTooltip) { display: none !important; }
+
+#title {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background:
+    radial-gradient(ellipse at center, rgba(24, 20, 37, .35) 0%, rgba(24, 20, 37, .85) 75%),
+    rgba(24, 20, 37, .25);
+}
+.title-card {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  width: min(420px, 100%);
+  padding: 22px 20px 14px;
+  box-shadow: inset 0 0 0 2px var(--panel-hi), 0 6px 0 var(--void), 0 0 0 4px rgba(254, 174, 52, .15);
+}
+#titleLogo { max-width: 100%; image-rendering: pixelated; animation: logo-bob 2.4s steps(4) infinite; }
+@keyframes logo-bob { 50% { transform: translateY(-3px); } }
+.title-tag { margin: 0; font-size: 13px; color: var(--mute); text-align: center; }
+#titleBelt { width: 352px; max-width: 100%; image-rendering: pixelated; margin: 2px 0 6px; }
+
+.title-menu { display: grid; gap: 6px; width: 100%; }
+body.title #levelCard { display: none !important; }
+.title-btn {
+  position: relative;
+  display: grid;
+  gap: 1px;
+  padding: 9px 14px 9px 30px;
+  font-size: 16px;
+  text-align: left;
+  background: var(--panel-hi);
+  box-shadow: inset 0 -3px 0 var(--void), inset 0 2px 0 var(--line);
+}
+.title-btn small { font-size: 11px; color: var(--mute); }
+/* Petite flèche pixel qui pointe le choix survolé */
+.title-btn::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  border: 6px solid transparent;
+  border-left-color: var(--accent);
+  border-right-width: 0;
+  transform: translateY(-50%);
+  opacity: 0;
+}
+.title-btn:hover::before, .title-btn:focus-visible::before { opacity: 1; }
+.title-btn:hover, .title-btn:focus-visible { background: var(--line); outline: none; }
+.title-btn.primary { background: #a85f1b; box-shadow: inset 0 -3px 0 #5e3410, inset 0 2px 0 var(--accent); }
+.title-btn.primary:hover, .title-btn.primary:focus-visible { background: #c4741f; }
+.title-btn.primary small { color: var(--ink); }
+
+.title-code { display: grid; gap: 4px; font-size: 12px; color: var(--mute); }
+#tCode {
+  font-family: var(--ui);
+  font-size: 22px;
+  letter-spacing: .3em;
+  text-align: center;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--void);
+  border: 2px solid var(--panel-hi);
+  padding: 6px;
+}
+#tCode:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.title-status { margin: 0; min-height: 16px; font-size: 12px; color: var(--mute); text-align: center; }
+.title-status.error { color: var(--bad); }
+.title-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  font-size: 11px;
+  color: var(--mute);
+  border-top: 2px solid var(--panel-hi);
+  padding-top: 8px;
+}
+#titleLang {
+  font-family: var(--ui);
+  font-size: 11px;
+  color: var(--ink);
+  background: var(--panel-hi);
+  border: 2px solid var(--void);
+  cursor: var(--cursor-pointer, pointer);
+}
+#toast { z-index: 30; }
 
 /* ---------- Petit écran ---------- */
 

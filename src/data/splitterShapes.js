@@ -50,13 +50,6 @@ export function filterOutputs(dir, shapeId, filters, itemType) {
   return listed.length ? listed : outputs.filter((side) => !filterFor(filters, dir, side).length);
 }
 
-/** Ajoute ou retire un item de la liste de la sortie `side`. */
-export function toggleFilter(filters, dir, side, itemType) {
-  const rel = relativeSide(dir, side);
-  const list = filters[rel];
-  filters[rel] = list.includes(itemType) ? list.filter((t) => t !== itemType) : [...list, itemType];
-}
-
 /** Sorties du splitter rangées de la plus prioritaire à la moins prioritaire. */
 export function priorityOrder(dir, shapeId, priority) {
   const outputs = splitterOutputs(dir, shapeId);

@@ -16,6 +16,8 @@ import { beltArms } from '../sim/belt.js';
 import { isConveyor } from '../sim/transfer.js';
 import { makeCanvas } from './pen.js';
 import { bakeTerrain } from './terrainImage.js';
+import { bakeFog } from './fogImage.js';
+import { fogVersion } from '../world/fog.js';
 import { cameraOrigin, carriedItemPosition, conveyorFrame, machinePorts, selectionOutline, selectionOverlay, cursorPreview, isVisible, visibleCells, waterSparkles } from './scene.js';
 import {
   beltColors, beltFrame, drawBelt, drawFilter, drawMerger, drawMergerBase, drawMergerLid, drawSmartSplitter, drawSplitter, filterKey,
@@ -28,6 +30,8 @@ import { DOCK_SIZE, PORT_SIZE, drawDock, drawPort } from './sprites/ports.js';
 
 /** Marge autour des textures de machines, pour l'ombre et la goulotte qui dépassent. */
 const MACHINE_MARGIN = 4;
+/** Pixels de l'image du brouillard par case : le grain de sa bordure tramée. */
+const FOG_PIXELS_PER_CELL = 4;
 
 export async function createPixiRenderer(canvas) {
   const app = new Application();
@@ -65,6 +69,9 @@ export async function createPixiRenderer(canvas) {
   const underBelts = new SpritePool();
   const underItems = new SpritePool();
   const underLids = new SpritePool();    // portails des tunnels, par-dessus les items
+  const fog = new Sprite();              // brouillard : ce qui reste à découvrir
+  fog.scale.set(TILE / FOG_PIXELS_PER_CELL);
+  let fogDrawn = -1;
   const highlights = new SpritePool();   // bâtiments sélectionnés, teintés de cyan
   const highlightOutline = new Sprite(); // contour du groupe sélectionné
   let highlightOutlineKey = null;
@@ -74,7 +81,7 @@ export async function createPixiRenderer(canvas) {
   world.addChild(
     terrain, overlay, belts.layer, itemShadows.layer, items.layer, lids.layer,
     machines.layer, ports.layer, effects, icons.layer,
-    underShade, underBelts.layer, underItems.layer, underLids.layer, highlights.layer, highlightOutline, ghosts.layer, cursor,
+    underShade, underBelts.layer, underItems.layer, underLids.layer, fog, highlights.layer, highlightOutline, ghosts.layer, cursor,
   );
 
   const shadowTexture = textures.get('item-shadow', ITEM_SIZE, 6, (ctx) => {
@@ -317,7 +324,7 @@ export async function createPixiRenderer(canvas) {
         machines.next(machineTexture(b, animationState(b, time), true), b.x * TILE - MACHINE_MARGIN, b.y * TILE - MACHINE_MARGIN);
         if (b.kind === 'hub') {
           if (b.flash > 0) effects.rect(b.x * TILE + 17, b.y * TILE + 8, 14, 12).fill({ color: P.yellow, alpha: (b.flash / 0.3) * 0.8 });
-        } else {
+        } else if (b.kind !== 'storage') {
           drawProgressBars(b, time);
         }
       }
@@ -335,6 +342,13 @@ export async function createPixiRenderer(canvas) {
       }
 
       for (const pool of allPools) pool.end();
+      // Le brouillard n'est redessiné que quand la zone découverte change.
+      if (fogDrawn !== fogVersion) {
+        const old = fog.texture;
+        fog.texture = textures.fromCanvas(bakeFog(FOG_PIXELS_PER_CELL));
+        if (fogDrawn !== -1 && old !== Texture.EMPTY) old.destroy(true);
+        fogDrawn = fogVersion;
+      }
       drawCursor(preview, time);
 
       app.renderer.render(app.stage);

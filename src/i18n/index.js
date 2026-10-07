@@ -52,6 +52,10 @@ export const decimal = (n, digits = 1) => {
   return lang === 'fr' ? text.replace('.', ',') : text;
 };
 
+/** Date et heure courtes dans la langue actuelle, ex. « 7 oct. 2026, 15 h 42 ». */
+export const formatDate = (ms) =>
+  new Date(ms).toLocaleString(lang === 'fr' ? 'fr-CA' : 'en-CA', { dateStyle: 'medium', timeStyle: 'short' });
+
 // Noms des choses du jeu (les données n'ont que des identifiants).
 export const buildingName = (type) => t(`building.${type}`);
 export const itemName = (type) => t(`item.${type}`);

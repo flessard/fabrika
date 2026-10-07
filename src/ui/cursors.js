@@ -108,8 +108,8 @@ const CURSORS = [
   },
 ];
 
-/** Image du curseur agrandie `scale` fois, avec son contour noir. */
-function cursorImage(art, scale) {
+/** Image du curseur agrandie `scale` fois, avec son contour noir. `colors` remplace la palette. */
+function cursorImage(art, scale, colors = COLORS) {
   const h = art.length + 2, w = Math.max(...art.map((row) => row.length)) + 2;
   const at = (x, y) => art[y - 1]?.[x - 1];
   const filled = (x, y) => { const c = at(x, y); return c !== undefined && c !== ' '; };
@@ -117,12 +117,24 @@ function cursorImage(art, scale) {
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         let color = null;
-        if (filled(x, y)) color = COLORS[at(x, y)] ?? P.black;
+        if (filled(x, y)) color = colors[at(x, y)] ?? P.black;
         else if ([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]].some(([dx, dy]) => filled(x + dx, y + dy))) color = P.black;
         if (color) rect(x * scale, y * scale, scale, scale, color);
       }
     }
   }).toDataURL();
+}
+
+/** Point actif de la flèche dans son image agrandie ×2 (le contour la décale d'un pixel). */
+export const ARROW_HOTSPOT = 2;
+
+/**
+ * La flèche d'un autre joueur, à sa couleur : bord blanc, intérieur de sa couleur.
+ * Image agrandie ×2 (data URL), pour le dessiner là où est sa souris.
+ */
+export function playerArrow(color) {
+  const arrow = CURSORS.find((c) => c.name === 'arrow');
+  return cursorImage(arrow.art, 2, { w: P.white, a: color });
 }
 
 /** Crée les curseurs et les donne au CSS. À appeler une fois au démarrage. */

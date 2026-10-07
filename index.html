@@ -12,31 +12,73 @@
   <!-- La carte est dessinée dans ce canevas (voir src/render/renderer.js). -->
   <canvas id="game"></canvas>
 
-  <!-- HUD : nom du jeu, objectif du tableau, carte, aide (voir src/ui/hud.js). -->
+  <!-- HUD : nom du jeu, niveau, commande à livrer (voir src/ui/hud.js). Le reste est dans le menu Échap. -->
   <div id="hud" class="panel">
-    <div class="brand"><b>Fabrika</b><span id="boardLbl"></span></div>
-    <div class="goal">
-      <canvas id="goalIcon" width="7" height="7"></canvas>
-      <div>
-        <div class="goal-label" id="goalLabel"></div>
-        <div class="barbg"><i id="goalFill"></i></div>
-      </div>
-      <b id="goalNum"></b>
-    </div>
-    <div class="meta">
-      <span id="seedLbl">Carte</span>
-      <span class="meta-buttons">
-        <button id="sound" type="button"></button>
-        <button id="reroll" type="button" data-i18n="hud.newMap"></button>
+    <div class="brand">
+      <b>Fabrika</b>
+      <span class="brand-right">
+        <span id="hudOnline" hidden></span>
+        <span id="boardLbl"></span>
+        <button id="menuButton" type="button" data-i18n="hud.menu" data-i18n-title="pause.open"></button>
       </span>
     </div>
-    <!-- Choix de la langue (voir src/i18n/). -->
-    <label class="meta lang">
-      <span data-i18n="hud.lang"></span>
-      <select id="lang"></select>
-    </label>
-    <!-- Les textes marqués data-i18n viennent des dictionnaires (src/i18n/). -->
-    <div class="help" data-i18n-html="hud.help"></div>
+    <!-- Commande du niveau en cours : une ligne par ressource (voir src/ui/hud.js). -->
+    <div id="order" class="order"></div>
+    <!-- Inventaire : les objets de construction en stock (voir src/world/inventory.js). -->
+    <div id="inventory" class="inventory"></div>
+  </div>
+
+  <!-- Menu Échap : sauvegarde, son, langue, multijoueur, aide (voir src/ui/pauseMenu.js). -->
+  <div id="pause" hidden>
+    <div class="pause-card panel">
+      <div class="pause-head"><b data-i18n="pause.title"></b><span id="seedLbl"></span></div>
+
+      <div id="pauseMain" class="pause-page">
+        <button id="pResume" type="button" class="title-btn primary"><span data-i18n="pause.resume"></span></button>
+
+        <div class="pause-row">
+          <span data-i18n="hud.game"></span>
+          <span class="meta-buttons">
+            <button id="saveGame" type="button" data-i18n="hud.save" data-i18n-title="hud.save.title"></button>
+            <button id="loadGame" type="button" data-i18n="hud.load"></button>
+          </span>
+        </div>
+        <div class="pause-row">
+          <span data-i18n="pause.sound"></span>
+          <button id="sound" type="button"></button>
+        </div>
+        <label class="pause-row lang">
+          <span data-i18n="hud.lang"></span>
+          <select id="lang"></select>
+        </label>
+        <!-- Multijoueur (voir src/ui/multiplayer.js et src/net/client.js). -->
+        <div class="pause-row mp">
+          <span data-i18n="mp.title"></span>
+          <span class="meta-buttons" id="mpOff">
+            <button id="mpHost" type="button" data-i18n="mp.host" data-i18n-title="mp.host.title"></button>
+            <input id="mpCode" type="text" maxlength="4" autocomplete="off" spellcheck="false"
+              data-i18n-placeholder="mp.code" data-i18n-aria="mp.code.aria">
+            <button id="mpJoin" type="button" data-i18n="mp.join"></button>
+          </span>
+          <span class="meta-buttons" id="mpOn" hidden>
+            <b id="mpCodeLbl"></b>
+            <span id="mpPlayers"></span>
+            <button id="mpLeave" type="button" data-i18n="mp.leave"></button>
+          </span>
+        </div>
+
+        <div class="pause-buttons">
+          <button id="pHelp" type="button" class="title-btn"><span data-i18n="pause.help"></span></button>
+          <button id="pTitle" type="button" class="title-btn"><span data-i18n="pause.toTitle"></span></button>
+        </div>
+      </div>
+
+      <!-- Aide : les contrôles. Les textes data-i18n viennent des dictionnaires (src/i18n/). -->
+      <div id="pauseHelp" class="pause-page" hidden>
+        <div class="help" data-i18n-html="hud.help"></div>
+        <button id="pBack" type="button" class="title-btn"><span data-i18n="title.back"></span></button>
+      </div>
+    </div>
   </div>
 
   <!-- Mini-carte (voir src/render/minimap.js). -->
@@ -60,6 +102,47 @@
     <button type="button" data-action="erase" class="sm-danger"><span data-i18n="selection.erase"></span> <kbd data-i18n="selection.deleteKey"></kbd></button>
     <button type="button" data-action="close" class="sm-close" data-i18n-title="selection.close" data-i18n-aria="selection.close">×</button>
   </div>
+
+  <!-- Curseurs des autres joueurs (voir src/ui/multiplayer.js). -->
+  <div id="presence"></div>
+
+  <!-- Écran titre, par-dessus la carte qui tourne en fond (voir src/ui/title.js). -->
+  <div id="title" hidden>
+    <div class="title-card panel">
+      <canvas id="titleLogo"></canvas>
+      <p class="title-tag" data-i18n="title.tagline"></p>
+      <canvas id="titleBelt"></canvas>
+
+      <div class="title-menu" id="titleMain">
+        <button id="tNew" type="button" class="title-btn primary"><span data-i18n="title.new"></span></button>
+        <button id="tContinue" type="button" class="title-btn" hidden>
+          <span data-i18n="title.continue"></span><small id="tContinueDate"></small>
+        </button>
+        <button id="tHost" type="button" class="title-btn">
+          <span data-i18n="title.host"></span><small data-i18n="title.host.detail"></small>
+        </button>
+        <button id="tJoin" type="button" class="title-btn"><span data-i18n="title.join"></span></button>
+      </div>
+
+      <div class="title-menu" id="titleJoin" hidden>
+        <label class="title-code">
+          <span data-i18n="title.code"></span>
+          <input id="tCode" type="text" maxlength="4" autocomplete="off" spellcheck="false" placeholder="ABCD">
+        </label>
+        <button id="tJoinGo" type="button" class="title-btn primary"><span data-i18n="title.joinGo"></span></button>
+        <button id="tBack" type="button" class="title-btn"><span data-i18n="title.back"></span></button>
+      </div>
+
+      <p id="titleStatus" class="title-status" role="status"></p>
+      <div class="title-foot">
+        <label><span data-i18n="hud.lang"></span> <select id="titleLang"></select></label>
+        <span data-i18n="title.version"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Carte de niveau : la commande à livrer, au début et après chaque niveau réussi (voir src/ui/levelCard.js). -->
+  <div id="levelCard" class="panel" hidden></div>
 
   <div id="toast" class="panel" hidden></div>
   <div id="hint" class="panel" hidden></div>

@@ -1,20 +1,22 @@
 // Sélection de plusieurs bâtiments : on encadre une zone, puis le menu propose
 // de déplacer, copier ou effacer le groupe.
 //
-// Déplacer et copier font suivre le groupe au curseur (ui.placing) :
-//   - déplacer retire les bâtiments de la carte et les repose au clic, vidés
-//     (plus d'items, de stock ni de fabrication en cours) ; Échap les remet à leur
-//     place tels quels ;
-//   - copier pose un nouveau groupe, vide lui aussi, à chaque clic, jusqu'à Échap.
+// Déplacer et copier font suivre un aperçu du groupe au curseur (ui.placing) :
+//   - déplacer : les bâtiments restent en place (surlignés) jusqu'au clic, puis la
+//     commande 'moveGroup' les repose au nouvel endroit, vidés (plus d'items, de stock
+//     ni de fabrication en cours) ; Échap abandonne sans rien changer ;
+//   - copier : la commande 'placeGroup' pose un nouveau groupe, vide lui aussi, à chaque
+//     clic, jusqu'à Échap.
 // R tourne le groupe d'un quart de tour pendant qu'il suit le curseur.
-import { TILE } from '../config.js';
+// Rien ici ne modifie l'usine directement : tout passe par des commandes (sim/commands.js).
 import { turnRight } from '../core/grid.js';
 import { onLayer } from '../data/buildings.js';
 import { game, ui } from '../state.js';
 import { emit } from '../core/events.js';
 import { buildingName } from '../i18n/index.js';
-import { emptyBuilding, liftBuilding, placementProblem, placeBuilding, putBackBuilding, removeBuilding } from '../world/buildings.js';
-import { spawnPuff } from '../sim/particles.js';
+import { buildingById, placementProblem } from '../world/buildings.js';
+import { issue } from '../sim/commands.js';
+import { mergeProblem } from '../sim/belt.js';
 import { playSound } from '../audio/sounds.js';
 
 // ---------- Encadrer ----------
@@ -48,11 +50,19 @@ export function finishSelectBox() {
   if (ui.selection.length) playSound('click');
 }
 
-/** Bâtiments à mettre en surbrillance : la sélection, ou ce que la zone encadre déjà. */
+/**
+ * Bâtiments à mettre en surbrillance : ce que la zone encadre déjà, le groupe qu'on
+ * est en train de déplacer (il reste en place jusqu'au clic), sinon la sélection.
+ */
 export function highlightedBuildings() {
   const area = selectBoxArea();
-  return area ? buildingsIn(area) : ui.selection;
+  if (area) return buildingsIn(area);
+  if (ui.placing?.mode === 'move') return movingGroup(ui.placing);
+  return ui.selection;
 }
+
+/** Les bâtiments d'un déplacement en cours qui sont toujours sur la carte. */
+const movingGroup = (placing) => placing.parts.map((part) => buildingById(part.id)).filter(Boolean);
 
 export function clearSelection() {
   ui.selection = [];
@@ -69,10 +79,8 @@ export function resetSelection() {
 
 export function eraseSelection() {
   if (!ui.selection.length) return;
-  for (const b of ui.selection) removeBuilding(b);
-  if (ui.selected && ui.selection.includes(ui.selected)) ui.selected = null;
+  issue({ type: 'eraseGroup', ids: ui.selection.map((b) => b.id) });
   clearSelection();
-  playSound('remove');
 }
 
 export const startMove = () => startPlacing('move');
@@ -80,7 +88,7 @@ export const startCopy = () => startPlacing('copy');
 
 /**
  * Prépare le groupe qui suit le curseur. Chaque pièce est décrite par rapport
- * au coin haut-gauche du groupe ; `b` est le bâtiment lui-même quand on le déplace.
+ * au coin haut-gauche du groupe ; `id` est le bâtiment lui-même quand on le déplace.
  */
 function startPlacing(mode) {
   const group = ui.selection;
@@ -92,13 +100,8 @@ function startPlacing(mode) {
   const parts = group.map((b) => ({
     type: b.type, kind: b.kind, w: b.w, h: b.h, dx: b.x - x0, dy: b.y - y0, dir: b.dir,
     shape: b.shape, priority: b.priority && [...b.priority], filters: b.filters && structuredClone(b.filters),
-    b: mode === 'move' ? b : null,
+    id: mode === 'move' ? b.id : null,
   }));
-
-  if (mode === 'move') {
-    for (const b of group) liftBuilding(b);
-    if (ui.selected && group.includes(ui.selected)) ui.selected = null;
-  }
   ui.placing = { mode, w: x1 - x0, h: y1 - y0, parts };
   clearSelection();
 }
@@ -122,12 +125,19 @@ export function rotatePlacing() {
 export function placementAt(cell) {
   const p = ui.placing;
   const x0 = cell.x - Math.floor((p.w - 1) / 2), y0 = cell.y - Math.floor((p.h - 1) / 2);
+  // Un groupe déplacé peut se poser en partie sur les cases qu'il va quitter.
+  const self = p.mode === 'move' ? new Set(movingGroup(p)) : null;
   const spots = p.parts.map((part) => {
     const x = x0 + part.dx, y = y0 + part.dy;
-    const problem = placementProblem(part.type, x, y);
+    const problem = placementProblem(part.type, x, y, self);
     return { part, x, y, ok: !problem, problem };
   });
-  return { x0, y0, spots, ok: spots.every((s) => s.ok) };
+  // Le groupe posé ne doit pas créer de jonction (deux entrées sur un tapis) avec ses voisins.
+  const virtuals = spots.map(({ part, x, y }) => ({
+    type: part.type, kind: part.kind, x, y, w: part.w, h: part.h, dir: part.dir, shape: part.shape,
+  }));
+  const merge = spots.every((s) => s.ok) ? mergeProblem(virtuals, self) : null;
+  return { x0, y0, spots, merge, ok: spots.every((s) => s.ok) && !merge };
 }
 
 /** Clic : pose le groupe sous le curseur, si toutes les pièces rentrent. */
@@ -139,30 +149,22 @@ export function placeGroupAt(cell) {
     return;
   }
   const p = ui.placing;
-  const placed = spots.map(({ part, x, y }) => {
-    const b = p.mode === 'move' ? moveTo(part.b, x, y, part.dir)
-      : placeBuilding(part.type, x, y, part.dir, copiedProps(part));
-    spawnPuff((x + part.w / 2) * TILE, (y + part.h / 2) * TILE, 2);
-    return b;
-  });
-  playSound('place');
-
-  // Un groupe déplacé reste sélectionné ; une copie continue de suivre le curseur.
   if (p.mode === 'move') {
+    // Le groupe reste sélectionné une fois posé (voir input/feedback.js).
+    issue({ type: 'moveGroup', moves: spots.map(({ part, x, y }) => ({ id: part.id, x, y, dir: part.dir })) });
     ui.placing = null;
-    ui.selection = placed;
+  } else {
+    // Une copie continue de suivre le curseur, pour en poser d'autres.
+    issue({ type: 'placeGroup', parts: spots.map(({ part, x, y }) => ({ building: part.type, x, y, dir: part.dir, props: copiedProps(part) })) });
   }
 }
 
-/** Échap ou clic droit : abandonne le groupe. Un déplacement remet tout à sa place. */
+/** Échap ou clic droit : abandonne le groupe. Un déplacement n'a encore rien changé. */
 export function cancelPlacing() {
   const p = ui.placing;
   if (!p) return;
   ui.placing = null;
-  if (p.mode === 'move') {
-    for (const part of p.parts) putBackBuilding(part.b);
-    ui.selection = p.parts.map((part) => part.b);
-  }
+  if (p.mode === 'move') ui.selection = movingGroup(p);
   playSound('click');
 }
 
@@ -188,13 +190,4 @@ function copiedProps(part) {
   if (part.priority) props.priority = [...part.priority];
   if (part.filters) props.filters = structuredClone(part.filters);
   return props;
-}
-
-/** Repose un bâtiment déplacé, vidé : plus d'item, de stock ni de fabrication en cours. */
-function moveTo(b, x, y, dir) {
-  b.x = x;
-  b.y = y;
-  b.dir = dir;
-  emptyBuilding(b);
-  return putBackBuilding(b);
 }
