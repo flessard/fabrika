@@ -41,25 +41,29 @@ const STATIC_SPRITES = {
 
   furnace: () => makeCanvas(32, 32, () => {
     rect(0, 0, 32, 32, P.black);
-    // Toit en ardoise et cheminée
-    rect(1, 1, 30, 17, P.slate);
-    rect(1, 1, 30, 1, P.steel);
-    for (const y of [5, 9, 13]) rect(1, y, 30, 1, P.night);
-    rect(20, 1, 8, 10, P.black);
-    rect(21, 2, 6, 8, P.rust);
-    rect(21, 2, 6, 1, P.copper);
-    rect(22, 3, 4, 2, P.black);
-    // Façade en briques
-    for (let y = 18; y < 30; y++) {
-      for (let x = 1; x < 31; x++) {
-        const row = (y - 18) >> 2;
-        const mortar = (y - 18) % 4 === 3 || (x + (row & 1) * 4) % 8 === 7;
-        rect(x, y, 1, 1, mortar ? P.bark : hash2(x, y) % 7 === 0 ? P.copper : P.rust);
-      }
-    }
-    // Bouche du four (le feu est animé)
-    rect(10, 20, 12, 10, P.black);
-    rect(11, 19, 10, 1, P.black);
+    // Toit en tôle rouille avec le creuset (le métal en fusion est animé)
+    rect(1, 1, 30, 17, P.rust);
+    rect(1, 1, 30, 1, P.copper);
+    rect(1, 17, 30, 1, P.bark);
+    disc(11, 9, 7, P.black);
+    disc(11, 9, 6, P.slate);
+    disc(11, 9, 5, P.black);
+    for (const [x, y] of [[3, 3], [28, 3], [3, 15], [28, 15]]) rect(x, y, 1, 1, P.soot);
+    // Évent d'échappement boulonné
+    rect(21, 3, 9, 9, P.black);
+    rect(22, 4, 7, 7, P.steel);
+    rect(22, 4, 7, 1, P.silver);
+    rect(23, 6, 5, 4, P.black);
+    for (let x = 23; x < 28; x += 2) rect(x, 7, 1, 2, P.slate);
+    rect(22, 13, 7, 2, P.black);
+    rect(23, 13, 5, 1, P.wine);
+    // Façade : voyant, porte de chargement vitrée (le feu est animé), grilles, rayures
+    rect(1, 18, 30, 8, P.steel);
+    rect(1, 18, 30, 1, P.silver);
+    rect(3, 20, 4, 4, P.black);
+    rect(9, 19, 14, 7, P.black);
+    for (let i = 0; i < 3; i++) rect(25, 20 + i * 2, 4, 1, P.slate);
+    hazardStripes(1, 26, 30, 4);
     rect(1, 30, 30, 1, P.soot);
   }),
 
@@ -157,17 +161,27 @@ const ANIMATE = {
 
   furnace({ lit, flicker }, sx, sy) {
     if (lit) {
-      rect(sx + 11, sy + 21, 10, 9, P.orange);
-      for (let k = 0; k < 7; k++) {
+      // Métal en fusion dans le creuset
+      disc(sx + 11, sy + 9, 4, P.orange);
+      disc(sx + 11, sy + 9, 2, P.amber);
+      // Feu derrière la vitre
+      rect(sx + 10, sy + 20, 12, 5, P.orange);
+      rect(sx + 10, sy + 20, 12, 1, P.yellow);
+      for (let k = 0; k < 6; k++) {
         const h = hash2(k, flicker);
-        rect(sx + 11 + (h % 10), sy + 22 + ((h >> 4) % 8), 1, 1, (h >> 8) & 1 ? P.yellow : P.amber);
+        rect(sx + 9 + (h % 5), sy + 7 + ((h >> 4) % 5), 1, 1, (h >> 8) & 1 ? P.yellow : P.amber);
+        rect(sx + 10 + ((h >> 3) % 12), sy + 21 + ((h >> 7) % 4), 1, 1, (h >> 9) & 1 ? P.yellow : P.amber);
       }
-      rect(sx + 11, sy + 21, 10, 1, P.yellow);
     } else {
-      rect(sx + 11, sy + 21, 10, 9, P.soot);
-      rect(sx + 13, sy + 28, 2, 1, P.rust);
-      rect(sx + 17, sy + 27, 1, 1, P.bark);
+      disc(sx + 11, sy + 9, 4, P.soot);
+      rect(sx + 9, sy + 8, 2, 1, P.bark);
+      rect(sx + 13, sy + 11, 1, 1, P.bark);
+      rect(sx + 10, sy + 20, 12, 5, P.night);
+      rect(sx + 12, sy + 24, 3, 1, P.soot);
     }
+    // Barreaux de la porte et voyant de chauffe
+    for (let x = 13; x < 22; x += 3) rect(sx + x, sy + 20, 1, 5, P.slate);
+    rect(sx + 4, sy + 21, 2, 2, lit ? P.red : P.wine);
   },
 
   press({ lit, piston }, sx, sy) {
