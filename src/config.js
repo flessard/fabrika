@@ -19,7 +19,7 @@ export const SIM_DT = 1 / 60;
 export const BELT_SPEED = 2.4;
 
 /** Zoom entier : 1 pixel de jeu = N pixels à l'écran. */
-export const ZOOM_MIN = 2;
+export const ZOOM_MIN = 1;
 export const ZOOM_MAX = 5;
 /** Vitesse de défilement au clavier, en pixels de jeu par seconde. */
 export const PAN_SPEED = 260;
