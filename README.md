@@ -6,14 +6,32 @@ et on livre les commandes au dépôt.
 
 ## Jouer en local
 
-Le jeu utilise des modules JavaScript : il faut le servir avec un petit serveur web
-(ouvrir `index.html` en double-cliquant ne fonctionne pas).
+Il faut [Node.js](https://nodejs.org) (version 20 ou plus).
 
 ```bash
-python3 -m http.server 8000
+npm install      # une seule fois
+npm run dev      # serveur de développement, la page se recharge à chaque modification
 ```
 
-Puis ouvrir <http://localhost:8000>. Aucune installation ni étape de build.
+Puis ouvrir l'adresse affichée (souvent <http://localhost:5173>).
+
+`npm run build` produit une version à publier dans `dist/`.
+
+### Options dans l'adresse
+
+| Option | Effet |
+|---|---|
+| `?renderer=canvas` | Utilise l'ancien rendu Canvas 2D au lieu de PixiJS (pour comparer) |
+| `?stress` | Remplit la carte de boucles de tapis pleines d'items, pour mesurer la vitesse |
+
+Le compteur sous la mini-carte affiche le rendu utilisé, les images par seconde et le temps de dessin.
+
+## Rendu
+
+Le dessin passe par [PixiJS](https://pixijs.com), qui utilise la carte graphique
+(WebGPU si le navigateur le permet, sinon WebGL). Le pixel art est toujours dessiné
+par le code de `src/render/sprites/`, mais une seule fois par image d'animation :
+chaque résultat devient une texture réutilisée.
 
 ## Contrôles
 
@@ -53,6 +71,7 @@ src/
     buildings.js        poser, trouver, enlever des bâtiments
     starterFactory.js   l'usine de départ
     map.js              démarrer une nouvelle carte
+    stressTest.js       boucles de tapis pour le mode ?stress
 
   sim/                  la simulation (aucun dessin ici)
     simulation.js       un pas de simulation
@@ -64,8 +83,10 @@ src/
     goal.js             objectif du tableau
 
   render/               le dessin (lit l'état, ne le modifie pas)
+    pixiRenderer.js     rendu PixiJS (par défaut)
+    canvasRenderer.js   rendu Canvas 2D (?renderer=canvas)
+    scene.js            ce que les deux rendus calculent pareil (visible, curseur…)
     pen.js              outils de dessin pixel par pixel
-    renderer.js         dessine une image complète du jeu
     terrainImage.js     image du terrain (fabriquée une fois par carte)
     minimap.js          mini-carte
     sprites/            dessin des items, des tapis et des machines
@@ -80,6 +101,7 @@ src/
     hud.js              objectif, numéro de carte, messages
     toolbar.js          palette d'outils
     hint.js             bulle d'aide
+    perf.js             compteur d'images par seconde
 ```
 
 ### Le principe
@@ -94,7 +116,8 @@ src/
 1. Ajouter ses items dans `src/data/items.js`.
 2. Ajouter la machine dans `src/data/buildings.js` avec `kind: 'crafter'`, un temps et ses recettes.
 3. Ajouter son outil dans `TOOLS` (même fichier).
-4. Dessiner son sprite dans `src/render/sprites/machines.js` (`STATIC_SPRITES`, et `ANIMATE` si elle bouge).
+4. Dessiner son sprite dans `src/render/sprites/machines.js` (`STATIC_SPRITES`, et si elle bouge,
+   `animationState` pour décrire son image d'animation et `ANIMATE` pour la dessiner).
 
 La simulation la prend en charge sans autre changement.
 
