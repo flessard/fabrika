@@ -7,6 +7,9 @@
 //   fer     : 2 foreuses → groupeur → four → presse → plaques ───┐
 //   cuivre  : 2 foreuses → groupeur → four → presse → fil ────── dépôt
 //   charbon : foreuse → tunnel (sous terre) → tapis ─────────────┘
+//
+// Les foreuses sortent aussi des résidus, mêlés au minerai : sur chaque ligne, un filtre
+// les envoie de côté dans une décharge.
 import { DOWN, LEFT, RIGHT, UP } from '../core/grid.js';
 import { ORE } from './terrain.js';
 import { placeBuilding } from './buildings.js';
@@ -41,7 +44,9 @@ export function buildStarterFactory(cx, cy, { demo = false } = {}) {
   placeBuilding('belt', cx - 12, cy + 1, UP);
   // Les deux foreuses se rejoignent : il faut un groupeur (entrées : arrière et dessous).
   placeBuilding('merger', cx - 12, cy, RIGHT, { shape: 'YR' });
-  for (let x = cx - 11; x <= cx - 10; x++) placeBuilding('belt', x, cy, RIGHT);
+  placeBuilding('filter', cx - 11, cy, RIGHT, { shape: 'YR', filters: { F: [], L: [], R: ['rubble'] } });
+  placeBuilding('dump', cx - 11, cy + 1);
+  placeBuilding('belt', cx - 10, cy, RIGHT);
   placeBuilding('furnace', cx - 9, cy - 1, RIGHT);
   placeBuilding('belt', cx - 7, cy, RIGHT);
   placeBuilding('belt', cx - 6, cy, RIGHT);
@@ -54,7 +59,8 @@ export function buildStarterFactory(cx, cy, { demo = false } = {}) {
   placeBuilding('drill', cx + 8, cy - 8, DOWN);
   for (let x = cx + 8; x >= cx + 6; x--) placeBuilding('belt', x, cy - 6, LEFT);
   placeBuilding('merger', cx + 5, cy - 6, DOWN, { shape: 'YL' });
-  placeBuilding('belt', cx + 5, cy - 5, DOWN);
+  placeBuilding('filter', cx + 5, cy - 5, DOWN, { shape: 'YL', filters: { F: [], L: ['rubble'], R: [] } });
+  placeBuilding('dump', cx + 6, cy - 5);
   placeBuilding('belt', cx + 5, cy - 4, DOWN);
   placeBuilding('furnace', cx + 4, cy - 3, LEFT);
   placeBuilding('belt', cx + 3, cy - 3, LEFT);
@@ -63,7 +69,8 @@ export function buildStarterFactory(cx, cy, { demo = false } = {}) {
 
   // Charbon, par le bas du dépôt, en passant par un tunnel
   placeBuilding('drill', cx - 8, cy + 6, RIGHT);
-  placeBuilding('belt', cx - 6, cy + 7, RIGHT);
+  placeBuilding('filter', cx - 6, cy + 7, RIGHT, { shape: 'YR', filters: { F: [], L: [], R: ['rubble'] } });
+  placeBuilding('dump', cx - 6, cy + 8);
   placeBuilding('belt', cx - 5, cy + 7, RIGHT);
   placeBuilding('tunnelIn', cx - 4, cy + 7, RIGHT);
   placeBuilding('underBelt', cx - 3, cy + 7, RIGHT);

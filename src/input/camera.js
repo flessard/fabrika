@@ -2,6 +2,7 @@
 // La caméra s'arrête aux bords de la carte (plus une petite marge).
 import { CAMERA_MARGIN, CLIFF_HEIGHT, MAP_H, MAP_W, TILE, TOOLBAR_HEIGHT, ZOOM_MAX, ZOOM_MIN } from '../config.js';
 import { view } from '../state.js';
+import { uiScale } from '../ui/uiScale.js';
 
 let canvas = null;
 /** Fonction du rendu actif qui redimensionne sa surface de dessin (voir main.js). */
@@ -36,7 +37,8 @@ export function resizeView() {
 }
 
 export function clampCamera() {
-  const bottomUi = Math.ceil(TOOLBAR_HEIGHT / view.zoom);
+  // La palette du bas grandit avec la taille de l'interface.
+  const bottomUi = Math.ceil((TOOLBAR_HEIGHT * uiScale()) / view.zoom);
   const minX = -CAMERA_MARGIN;
   const maxX = MAP_W * TILE + CAMERA_MARGIN - view.width;
   const minY = -CAMERA_MARGIN;

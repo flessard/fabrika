@@ -3,7 +3,7 @@
 import { MAP_H, MAP_W, TILE } from '../config.js';
 import { DIRS, cellIndex, opposite } from '../core/grid.js';
 import { hash2 } from '../core/random.js';
-import { BUILDINGS, isBuildTool, isTunnel, isUnderground, layersOf } from '../data/buildings.js';
+import { BUILDINGS, isBuildTool, isTunnel, isUnderground, layersOf, outputLayer } from '../data/buildings.js';
 import { PALETTE as P } from '../data/palette.js';
 import { game, ui, view } from '../state.js';
 import { GROUND } from '../world/terrain.js';
@@ -15,6 +15,9 @@ import { toolType } from '../input/actions.js';
 import { beltArms, feedsInto, mergeProblem } from '../sim/belt.js';
 import { emptyFilters } from '../data/splitterShapes.js';
 import { outputScore } from '../sim/splitter.js';
+import { filterOutputs, splitterOutputs } from '../data/splitterShapes.js';
+import { machineRefuses } from '../sim/machines.js';
+import { isConveyor } from '../sim/transfer.js';
 
 /**
  * Coin haut-gauche de la caméra arrondi au pixel de jeu (vers le bas), pour un rendu net.
@@ -97,9 +100,9 @@ export function machinePorts(visible) {
   const showAll = CONVEYOR_TOOLS.has(ui.tool);
 
   for (const b of visible) {
-    if (b.kind !== 'drill' && b.kind !== 'crafter' && b.kind !== 'hub' && b.kind !== 'storage') continue;
-    // Le dépôt n'a pas de sortie, ni un conteneur fermé (il reçoit alors de tous les côtés).
-    const out = b.kind === 'hub' || (b.kind === 'storage' && !b.outputOpen) ? null : outputCell(b);
+    if (b.kind !== 'drill' && b.kind !== 'crafter' && b.kind !== 'hub' && b.kind !== 'storage' && b.kind !== 'dump') continue;
+    // Le dépôt et la décharge n'ont pas de sortie, ni un conteneur fermé (il reçoit alors de tous les côtés).
+    const out = b.kind === 'hub' || b.kind === 'dump' || (b.kind === 'storage' && !b.outputOpen) ? null : outputCell(b);
     if (out) {
       // Au milieu du bord, entre la dernière case de la machine et la case de sortie.
       const [dx, dy] = DIRS[b.dir];
@@ -126,6 +129,48 @@ export function machinePorts(visible) {
     }
   }
   return ports;
+}
+
+/**
+ * Un convoyeur bloqué parce que la machine devant lui refuse son item (ex. des résidus
+ * devant un four) : la machine qui refuse, et les sorties où il bute.
+ * Retourne null si le convoyeur avance, est vide, ou attend seulement de la place.
+ */
+export function refusal(b) {
+  if (!isConveyor(b) || !b.item || !b.stalled) return null;
+  const item = b.item.type;
+  const sides = b.kind === 'splitter'
+    ? (b.filters ? filterOutputs(b.dir, b.shape, b.filters, item) : splitterOutputs(b.dir, b.shape))
+    : [b.dir];
+  const refused = [];
+  for (const side of sides) {
+    const [dx, dy] = DIRS[side];
+    const target = buildingAt(b.x + dx, b.y + dy, outputLayer(b));
+    if (!target || isConveyor(target) || !machineRefuses(target, item)) return null; // une sortie qui pourrait le prendre
+    refused.push({ side, target });
+  }
+  return refused.length ? { item, target: refused[0].target, sides: refused.map((r) => r.side) } : null;
+}
+
+/**
+ * Les signaux « item refusé » à dessiner : une bulle au-dessus du convoyeur avec l'item
+ * barré, et une croix rouge sur chaque bord où il bute. Ils clignotent.
+ */
+export function refusalMarks(visible, time) {
+  const marks = [];
+  const blink = Math.floor(time * 2.5) % 2 === 0;
+  const bob = Math.round(Math.sin(time * 4));
+  for (const b of visible) {
+    if (isUnderground(b) !== (ui.layer === 'under')) continue;
+    const r = refusal(b);
+    if (!r) continue;
+    marks.push({ kind: 'bubble', item: r.item, x: b.x * TILE + TILE / 2, y: b.y * TILE - 7 + bob, bright: blink });
+    for (const side of r.sides) {
+      const [dx, dy] = DIRS[side];
+      marks.push({ kind: 'cross', x: (b.x + 0.5 + dx / 2) * TILE, y: (b.y + 0.5 + dy / 2) * TILE, bright: blink });
+    }
+  }
+  return marks;
 }
 
 /** Reflets blancs (2 × 1 px) sur l'eau visible, qui changent 3 fois par seconde. */

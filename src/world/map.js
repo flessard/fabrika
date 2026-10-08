@@ -7,10 +7,13 @@ import { game } from '../state.js';
 import { generateTerrain } from './terrain.js';
 import { resetFog } from './fog.js';
 import { START_INVENTORY } from './inventory.js';
+import { ALL_UNLOCKED, START_UNLOCKED } from '../data/research.js';
 import { buildStarterFactory, starterFocus, starterTerrain } from './starterFactory.js';
 
 export function startNewMap(seed, { demo = false } = {}) {
   const { cx, cy } = prepareMap(seed);
+  // L'usine de démonstration du menu montre tout ; une vraie partie part du début de l'arbre.
+  game.unlocked = [...(demo ? ALL_UNLOCKED : START_UNLOCKED)];
   buildStarterFactory(cx, cy, { demo });
   const focus = starterFocus(cx, cy, { demo });
   game.spawn = { x: focus.x * TILE, y: focus.y * TILE };
@@ -37,6 +40,8 @@ export function prepareMap(seed) {
   game.level = 0;
   game.levelDelivered = {};
   game.inventory = { ...START_INVENTORY };
+  game.unlocked = [...START_UNLOCKED];
+  game.credits = {};
   game.tick = 0;
   return { cx, cy };
 }

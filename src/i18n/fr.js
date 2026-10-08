@@ -13,6 +13,7 @@ export default {
   'pause.title': 'Menu',
   'pause.resume': 'Reprendre',
   'pause.sound': 'Son',
+  'pause.uiScale': 'Taille de l\'interface',
   'pause.help': 'Aide',
   'pause.toTitle': 'Menu principal',
   'title.tagline': 'Une usine en pixel art, seul ou à plusieurs',
@@ -73,13 +74,17 @@ export default {
   'hud.help':
     '<ul class="help-list">'
     + '<li><b>Se déplacer</b> glisser la carte · <kbd>WASD</kbd> / flèches · <kbd>+</kbd> <kbd>−</kbd> ou molette : zoom</li>'
-    + '<li><b>Construire</b> <kbd>1</kbd>…<kbd>9</kbd> outils · <kbd>R</kbd> tourner · <kbd>F</kbd> forme · <kbd>P</kbd> priorités</li>'
+    + '<li><b>Outils</b> <kbd>1</kbd> Déplacer · <kbd>2</kbd> Sélection · <kbd>3</kbd> Gomme · <kbd>4</kbd> Tapis</li>'
+    + '<li><b>Familles</b> <kbd>5</kbd> Logistique · <kbd>6</kbd> Production · <kbd>7</kbd> Stockage : rappuyer pour passer au suivant</li>'
+    + '<li><b>Construire</b> <kbd>R</kbd> tourner · <kbd>F</kbd> forme · <kbd>P</kbd> priorités</li>'
+    + '<li><b>Résidus</b> ils sortent des foreuses avec le minerai : triez-les avec un <kbd>I</kbd> Filtre vers une <kbd>G</kbd> Décharge</li>'
+    + '<li><b>Recherche</b> <kbd>K</kbd> : débloquer des bâtiments avec les items livrés au dépôt</li>'
     + '<li><b>Tapis</b> glisser pour tracer un chemin · relâcher pour poser</li>'
-    + '<li><b>Effacer</b> clic droit, ou la Gomme (<kbd>9</kbd>)</li>'
-    + '<li><b>Sélection</b> <kbd>0</kbd> (ou <kbd>Maj</kbd> + glisser) : <kbd>X</kbd> déplacer · <kbd>C</kbd> copier · <kbd>Suppr</kbd> effacer</li>'
+    + '<li><b>Effacer</b> clic droit, ou la Gomme (<kbd>3</kbd>)</li>'
+    + '<li><b>Sélection</b> <kbd>2</kbd> (ou <kbd>Maj</kbd> + glisser) : <kbd>X</kbd> déplacer · <kbd>C</kbd> copier · <kbd>Suppr</kbd> effacer</li>'
     + '<li><b>Sous-sol</b> <kbd>T</kbd> tunnel (<kbd>F</kbd> entrée / sortie) · <kbd>U</kbd> voir le sous-sol</li>'
     + '<li><b>Filtre</b> <kbd>I</kbd>, puis choisir les items de chaque sortie dans sa fiche</li>'
-    + '<li><b>Fiche</b> clic sur un bâtiment avec Déplacer (<kbd>1</kbd>)</li>'
+    + '<li><b>Fiche</b> clic sur un bâtiment avec Déplacer (<kbd>1</kbd>) · <kbd>O</kbd> met une machine en marche ou l\'arrête</li>'
     + '<li><b>Partie</b> <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>S</kbd> sauvegarder · <kbd>M</kbd> son · <kbd>Échap</kbd> annuler, puis ce menu</li>'
     + '</ul>',
   'hud.mapSize': '{w} × {h} cases',
@@ -116,9 +121,14 @@ export default {
   'tool.press': 'Presse',
   'tool.assembler': 'Assembleur',
   'tool.container': 'Conteneur',
+  'tool.dump': 'Décharge',
   'tool.erase': 'Gomme',
   'tool.select': 'Sélection',
   'tool.rotate': 'Tourner',
+  'group.logistics': 'Logistique',
+  'group.production': 'Production',
+  'group.storage': 'Stockage',
+  'toolbar.group.title': 'Clic : voir les bâtiments · touche {key} : passer au suivant',
   'tool.layer': 'Sous-sol',
 
   // ---------- Bâtiments ----------
@@ -140,12 +150,15 @@ export default {
   'building.hub': 'Dépôt',
   'building.assembler': 'Assembleur',
   'building.container': 'Conteneur',
+  'building.dump': 'Décharge',
 
   // ---------- Items ----------
   'item.fe_ore': 'Minerai de fer',
   'item.fe_ore.plural': 'minerais de fer',
   'item.cu_ore': 'Minerai de cuivre',
   'item.cu_ore.plural': 'minerais de cuivre',
+  'item.rubble': 'Résidus',
+  'item.rubble.plural': 'résidus',
   'item.coal': 'Charbon',
   'item.coal.plural': 'charbons',
   'item.fe_ingot': 'Lingot de fer',
@@ -156,12 +169,15 @@ export default {
   'item.fe_plate.plural': 'plaques de fer',
   'item.belt': 'Tapis',
   'item.belt.plural': 'tapis',
+  'item.fe_gear': 'Engrenage',
+  'item.fe_gear.plural': 'engrenages',
   'item.cu_wire': 'Fil de cuivre',
   'item.cu_wire.plural': 'fils de cuivre',
   'family.ore': 'Minerai',
   'family.ingot': 'Lingot',
   'family.product': 'Produit',
   'family.part': 'Pièce de construction',
+  'family.waste': 'Déchet (à la décharge)',
 
   // ---------- Formes et côtés ----------
   'shape.T': 'T',
@@ -179,6 +195,26 @@ export default {
   // ---------- Pourquoi on ne peut pas poser ----------
   'problem.offMap': 'hors de la carte',
   'problem.fog': 'zone inexplorée',
+  'research.button': 'Recherche',
+  'research.open': 'Arbre de recherche (K)',
+  'research.title': 'Recherche',
+  'research.close': 'Fermer',
+  'research.intro': 'Débloquez de nouveaux bâtiments en dépensant des items livrés au dépôt. Chaque livraison compte, même hors commande.',
+  'research.bank': 'À dépenser :',
+  'research.bank.empty': 'rien pour l\'instant : livrez des items au dépôt',
+  'research.start': 'Disponible dès le début',
+  'research.unlocked': 'Débloqué',
+  'research.requires': 'Requiert : {names}',
+  'research.unlock': 'Débloquer',
+  'research.ready': 'Recherche possible : {name}',
+  'research.ready.detail': 'Ouvrez l\'arbre de recherche (K) pour le débloquer.',
+  'research.done': '{name} débloqué !',
+  'research.done.detail': 'Il est maintenant dans la palette.',
+  'research.locked.title': 'Pas encore débloqué : voir l\'arbre de recherche (K)',
+  'research.problem.done': 'déjà débloqué',
+  'research.problem.requires': 'il faut d\'abord : {names}',
+  'research.problem.cost': 'il manque {n} {item}',
+  'problem.locked': '{name} pas encore débloqué (arbre de recherche, K)',
   'problem.noStock': 'plus de {item} en stock',
   'problem.merge': 'deux entrées sur un tapis : il faut un groupeur',
   'problem.taken': 'déjà occupé ({name})',
@@ -193,10 +229,27 @@ export default {
   'panel.status.waiting': 'En attente de matière',
   'panel.status.running': 'En marche',
   'panel.status.outputFull': 'Sortie pleine',
+  'panel.status.refused': 'Refusé par : {machine}',
+  'panel.refused': 'Item refusé',
+  'refused.waste': '<b>{machine}</b> ne prend pas les {items} : triez-les avec un filtre (I) vers une décharge (G).',
+  'refused.recipe': '<b>{machine}</b> n\'a pas de recette active pour « {item} » : changez ses recettes, ou triez avec un filtre (I).',
+  'refused.other': '<b>{machine}</b> ne prend pas « {item} ».',
+  'panel.residue.aside': '1 résidu tous les {n} minerais, à trier',
+  'panel.dump.status': 'Détruit ce qu\'elle reçoit',
+  'panel.dump.destroyed': 'Items jetés',
+  'panel.dump.aside': 'par n\'importe quel côté',
   'panel.status.empty': 'Vide',
   'panel.status.blocked': 'Bloqué',
   'panel.status.moving': 'En mouvement',
+  'panel.status.off': 'Arrêtée',
+  'panel.power': 'Marche / arrêt',
+  'panel.power.aside': 'touche O',
+  'panel.power.turnOff': 'Arrêter la machine',
+  'panel.power.turnOn': 'Remettre en marche',
   'panel.recipes': 'Recettes : ',
+  'panel.recipes.none': 'aucune recette active',
+  'panel.recipeChoice': 'Recettes',
+  'panel.recipeChoice.aside': 'une par ingrédient',
   'panel.take': 'Prendre ({n})',
   'panel.take.title': 'Mettre ce que la machine a fabriqué dans l\'inventaire',
   'hud.inventory': 'Inventaire',
@@ -216,6 +269,9 @@ export default {
   'panel.stock': 'Stock',
   'panel.rate': 'Cadence',
   'panel.carrying': 'Dessus',
+  'panel.clear': 'Retirer',
+  'panel.clear.title': 'Retirer cet item (il est jeté)',
+  'panel.clear.title.stock': 'Retirer cet item et le remettre dans l\'inventaire',
   'panel.nothing': 'rien',
   'panel.empty': 'vide',
   'panel.throughput': 'Débit',
@@ -243,6 +299,7 @@ export default {
   'selection.move': 'Déplacer',
   'selection.copy': 'Copier',
   'selection.erase': 'Effacer',
+  'selection.power': 'Marche / arrêt',
   'selection.deleteKey': 'Suppr',
   'selection.close': 'Désélectionner (Échap)',
 
@@ -251,6 +308,8 @@ export default {
   'hint.machine': '<b>{name}</b> · {s} s par item · {makes} · {state}',
   'hint.machine.waiting': 'en attente',
   'hint.machine.blocked': 'sortie bloquée',
+  'hint.dump': '<b>{name}</b> · {n} items jetés · reçoit par tous les côtés',
+  'hint.machine.off': 'arrêtée (O pour la remettre en marche)',
   'hint.place.move': '<b>Déplacer</b> {what} · clic pour poser',
   'hint.place.copy': '<b>Copier</b> {what} · clic pour poser une copie',
   'hint.place.keys.move': '<b>R</b> tourner · <b>Échap</b> annuler',

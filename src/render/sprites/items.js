@@ -5,6 +5,15 @@ import { PALETTE as P } from '../../data/palette.js';
 import { makeCanvas, rect } from '../pen.js';
 
 const SHAPES = {
+  rubble: [
+    '.......',
+    '..kkk..',
+    '.kabck.',
+    'kkbbbkk',
+    'kabkcbk',
+    'kbbcbbk',
+    'kkkkkkk',
+  ],
   ore: [
     '.kkkk..',
     'kaabbk.',
@@ -42,6 +51,16 @@ const SHAPES = {
     '.kkkkk.',
   ],
 };
+
+SHAPES.gear = [
+  '..k.k..',
+  '.kakak.',
+  'kabbbak',
+  'kab.bak',
+  'kabbbak',
+  '.kcbck.',
+  '..k.k..',
+];
 
 SHAPES.belt = [
   '.......',

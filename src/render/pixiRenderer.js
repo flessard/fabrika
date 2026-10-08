@@ -9,7 +9,7 @@
 //   → (vue du sous-sol : voile sombre, tapis souterrains et tunnels, leurs items) → curseur
 import { Application, CanvasSource, Container, Graphics, Sprite, Texture } from 'pixi.js';
 import { MAP_PADDING, TILE } from '../config.js';
-import { BUILDINGS, isUnderground, outputCapacity } from '../data/buildings.js';
+import { BUILDINGS, canBePowered, isOn, isUnderground, outputCapacity } from '../data/buildings.js';
 import { PALETTE as P } from '../data/palette.js';
 import { game, ui, view } from '../state.js';
 import { beltArms } from '../sim/belt.js';
@@ -18,18 +18,21 @@ import { makeCanvas } from './pen.js';
 import { bakeTerrain } from './terrainImage.js';
 import { bakeFog } from './fogImage.js';
 import { fogVersion } from '../world/fog.js';
-import { cameraOrigin, carriedItemPosition, conveyorFrame, machinePorts, selectionOutline, selectionOverlay, cursorPreview, isVisible, visibleCells, waterSparkles } from './scene.js';
+import { cameraOrigin, carriedItemPosition, conveyorFrame, machinePorts, refusalMarks, selectionOutline, selectionOverlay, cursorPreview, isVisible, visibleCells, waterSparkles } from './scene.js';
 import {
   beltColors, beltFrame, drawBelt, drawFilter, drawMerger, drawMergerBase, drawMergerLid, drawSmartSplitter, drawSplitter, filterKey,
   drawTunnel, drawTunnelBase, drawTunnelLid, drawUnderBelt,
 } from './sprites/belts.js';
 import { ITEM_SIZE, itemSprite } from './sprites/items.js';
 import { animationState, drawMachineBody } from './sprites/machines.js';
+import { BUBBLE_H, BUBBLE_W, CROSS_SIZE, drawRefusalBubble, drawRefusalCross } from './sprites/refusal.js';
 import { HIGHLIGHT_MARGIN, groupOutline, highlightFrame, selectionHighlight } from './sprites/highlight.js';
 import { DOCK_SIZE, PORT_SIZE, drawDock, drawPort } from './sprites/ports.js';
 
 /** Marge autour des textures de machines, pour l'ombre et la goulotte qui dépassent. */
 const MACHINE_MARGIN = 4;
+/** Teinte d'une machine arrêtée (assombrie). */
+const OFF_TINT = 0x6f6f80;
 /** Pixels de l'image du brouillard par case : le grain de sa bordure tramée. */
 const FOG_PIXELS_PER_CELL = 4;
 
@@ -69,6 +72,7 @@ export async function createPixiRenderer(canvas) {
   const underBelts = new SpritePool();
   const underItems = new SpritePool();
   const underLids = new SpritePool();    // portails des tunnels, par-dessus les items
+  const alerts = new SpritePool();       // items refusés par une machine : bulle et croix rouges
   const fog = new Sprite();              // brouillard : ce qui reste à découvrir
   fog.scale.set(TILE / FOG_PIXELS_PER_CELL);
   let fogDrawn = -1;
@@ -81,7 +85,7 @@ export async function createPixiRenderer(canvas) {
   world.addChild(
     terrain, overlay, belts.layer, itemShadows.layer, items.layer, lids.layer,
     machines.layer, ports.layer, effects, icons.layer,
-    underShade, underBelts.layer, underItems.layer, underLids.layer, fog, highlights.layer, highlightOutline, ghosts.layer, cursor,
+    underShade, underBelts.layer, underItems.layer, underLids.layer, alerts.layer, fog, highlights.layer, highlightOutline, ghosts.layer, cursor,
   );
 
   const shadowTexture = textures.get('item-shadow', ITEM_SIZE, 6, (ctx) => {
@@ -132,6 +136,10 @@ export async function createPixiRenderer(canvas) {
   const dockTexture = (dir, kind) =>
     textures.get(`dock|${dir}|${kind}`, DOCK_SIZE, DOCK_SIZE, () => drawDock(0, 0, dir, kind));
 
+  const bubbleTexture = (type, bright) =>
+    textures.get(`refused|${type}|${bright ? 1 : 0}`, BUBBLE_W, BUBBLE_H, () => drawRefusalBubble(0, 0, type, bright));
+  const crossTexture = (bright) => textures.get(`refusedCross|${bright ? 1 : 0}`, CROSS_SIZE, CROSS_SIZE, () => drawRefusalCross(0, 0, bright));
+
   const itemTexture = (type) => textures.get(`item|${type}`, ITEM_SIZE, ITEM_SIZE, (ctx) => ctx.drawImage(itemSprite(type), 0, 0));
 
   const machineTexture = (b, state, shadow) => {
@@ -170,6 +178,13 @@ export async function createPixiRenderer(canvas) {
       effects.rect(x, y, filled, 3).fill(P.lime);
       effects.rect(x, y, filled, 1).fill(P.glint);
     }
+  }
+
+  function drawOffLight(b) {
+    const x = (b.x + b.w) * TILE - 8, y = b.y * TILE + 1;
+    effects.rect(x, y, 7, 7).fill(P.black);
+    effects.rect(x + 1, y + 1, 5, 5).fill(P.red);
+    effects.rect(x + 2, y + 3, 3, 1).fill(P.white);
   }
 
   function drawParticles() {
@@ -270,7 +285,7 @@ export async function createPixiRenderer(canvas) {
       const cells = visibleCells(ox, oy);
 
       drawOverlay(cells, time);
-      const allPools = [belts, itemShadows, items, lids, machines, ports, icons, underBelts, underItems, underLids];
+      const allPools = [belts, itemShadows, items, lids, machines, ports, icons, underBelts, underItems, underLids, alerts];
       for (const pool of allPools) pool.begin();
       effects.clear();
       underShade.clear();
@@ -321,10 +336,15 @@ export async function createPixiRenderer(canvas) {
       // Les machines du haut d'abord, pour que celles du bas passent devant.
       const sorted = visible.filter((b) => !isConveyor(b)).sort((a, b) => a.y - b.y);
       for (const b of sorted) {
-        machines.next(machineTexture(b, animationState(b, time), true), b.x * TILE - MACHINE_MARGIN, b.y * TILE - MACHINE_MARGIN);
+        // Une machine arrêtée est assombrie, avec un voyant rouge dans son coin.
+        const off = canBePowered(b) && !isOn(b);
+        machines.next(machineTexture(b, animationState(b, time), true), b.x * TILE - MACHINE_MARGIN, b.y * TILE - MACHINE_MARGIN, 1, off ? OFF_TINT : 0xffffff);
+        if (off) drawOffLight(b);
         if (b.kind === 'hub') {
           if (b.flash > 0) effects.rect(b.x * TILE + 17, b.y * TILE + 8, 14, 12).fill({ color: P.yellow, alpha: (b.flash / 0.3) * 0.8 });
-        } else if (b.kind !== 'storage') {
+        } else if (b.kind === 'dump') {
+          if (b.flash > 0) effects.rect(b.x * TILE + 4, b.y * TILE + 4, 8, 6).fill({ color: P.clay, alpha: (b.flash / 0.25) * 0.6 });
+        } else if (b.outputs) {
           drawProgressBars(b, time);
         }
       }
@@ -339,6 +359,12 @@ export async function createPixiRenderer(canvas) {
       if (underView) {
         underShade.rect(ox, oy, view.width, view.height).fill({ color: P.soot, alpha: 0.8 });
         for (const b of below) drawConveyor(b, { base: underBelts, items: underItems, lids: underLids });
+      }
+
+      // Par-dessus tout (même le voile du sous-sol) : les items refusés par une machine.
+      for (const m of refusalMarks(visible, time)) {
+        if (m.kind === 'bubble') alerts.next(bubbleTexture(m.item, m.bright), Math.round(m.x - BUBBLE_W / 2), m.y - BUBBLE_H);
+        else alerts.next(crossTexture(m.bright), Math.round(m.x - CROSS_SIZE / 2), Math.round(m.y - CROSS_SIZE / 2));
       }
 
       for (const pool of allPools) pool.end();
@@ -388,7 +414,7 @@ class SpritePool {
     this.used = 0;
   }
 
-  next(texture, x, y, alpha = 1) {
+  next(texture, x, y, alpha = 1, tint = 0xffffff) {
     let sprite = this.sprites[this.used];
     if (!sprite) {
       sprite = new Sprite();
@@ -398,6 +424,7 @@ class SpritePool {
     sprite.texture = texture;
     sprite.position.set(x, y);
     sprite.alpha = alpha;
+    sprite.tint = tint;
     sprite.visible = true;
     this.used++;
     return sprite;

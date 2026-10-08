@@ -16,7 +16,7 @@ import { stepSimulation } from './sim/simulation.js';
 import { createCanvasRenderer } from './render/canvasRenderer.js';
 import { createPixiRenderer } from './render/pixiRenderer.js';
 import { rebuildMinimapBase, renderMinimap } from './render/minimap.js';
-import { applySubpixelOffset, centerOn, initCamera, resizeView, setResizeHandler, updateZoom } from './input/camera.js';
+import { applySubpixelOffset, centerOn, clampCamera, initCamera, resizeView, setResizeHandler, updateZoom } from './input/camera.js';
 import { applyKeyboardPan, initControls } from './input/controls.js';
 import { resetSelection } from './input/selection.js';
 import { initCommandFeedback } from './input/feedback.js';
@@ -24,6 +24,8 @@ import { clearCommands } from './sim/commands.js';
 import { initHud, showMapInfo, showToast, updateInventory } from './ui/hud.js';
 import { initLevelCard } from './ui/levelCard.js';
 import { initPauseMenu } from './ui/pauseMenu.js';
+import { initResearch, updateResearch } from './ui/research.js';
+import { initUiScale } from './ui/uiScale.js';
 import { updateHint } from './ui/hint.js';
 import { closeInfoPanel, initInfoPanel, updateInfoPanel } from './ui/infoPanel.js';
 import { createPerfMeter } from './ui/perf.js';
@@ -93,6 +95,9 @@ installCursors();
 initHud({ onSave: saveGame, onLoad: loadSavedGame });
 initLevelCard();
 initPauseMenu();
+initResearch();
+initUiScale();
+on('ui:scale', clampCamera);
 addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's' && ui.screen !== 'title') {
     e.preventDefault(); // pas la fenêtre « Enregistrer la page » du navigateur
@@ -166,6 +171,7 @@ function frame(now) {
   updateSelectionMenu();
   updateInventory();
   updateToolCounts();
+  updateResearch();
   updatePresence();
   updateAmbience({ muted: !inGame() });
 

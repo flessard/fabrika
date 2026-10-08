@@ -168,7 +168,8 @@ export function mergeProblem(virtuals, ignore = null) {
 export function feedsInto(b, x, y, towardCell, layer = 'surface') {
   if (outputLayer(b) !== layer) return false;
   switch (b.kind) {
-    case 'hub': return false;
+    case 'hub':
+    case 'dump': return false;
     case 'splitter': return splitterOutputs(b.dir, b.shape).includes(towardCell);
     case 'belt':
     case 'merger': return b.dir === towardCell;

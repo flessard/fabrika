@@ -6,7 +6,7 @@
 // Une nouvelle machine de kind 'crafter' (data/buildings.js) a donc sa fiche sans rien ajouter.
 import { BELT_SPEED, TILE } from '../config.js';
 import { RIGHT, LEFT, turnLeft, turnRight } from '../core/grid.js';
-import { BUILDINGS, inputCapacity, isUnderground, outputCapacity } from '../data/buildings.js';
+import { BUILDINGS, inputCapacity, isOn, isUnderground, outputCapacity } from '../data/buildings.js';
 import { ITEMS } from '../data/items.js';
 import { filterFor, priorityOrder, raisePriority, relativeSide, splitterOutputs } from '../data/splitterShapes.js';
 import { mergerInputs } from '../data/mergerShapes.js';
@@ -18,8 +18,12 @@ import { flowSummary } from '../sim/flow.js';
 import { productionRate } from '../sim/machines.js';
 import { makeCanvas } from '../render/pen.js';
 import { issue } from '../sim/commands.js';
+import { placeScaled, screenSize, uiScale } from './uiScale.js';
 import { isStockItem } from '../world/inventory.js';
 import { stackSize } from '../sim/storage.js';
+import { refusal } from '../render/scene.js';
+import { refusalText } from './hint.js';
+import { activeRecipeIndices, activeRecipes, ingredientsOf, recipesOf, yieldOf } from '../data/recipes.js';
 import { beltColors, drawBelt, drawFilter, drawMerger, drawSmartSplitter, drawSplitter, drawTunnel, drawUnderBelt, filterKey } from '../render/sprites/belts.js';
 import { itemIconUrl } from '../render/sprites/items.js';
 import { machineSprite } from '../render/sprites/machines.js';
@@ -40,6 +44,13 @@ export function initInfoPanel() {
     const b = shownFor;
     const raise = e.target.closest('[data-raise]');
     if (e.target.closest('[data-take]') && b) issue({ type: 'takeOutput', id: b.id });
+    if (e.target.closest('[data-clear]') && b?.item) issue({ type: 'clearItem', id: b.id });
+    if (e.target.closest('[data-power]') && b) issue({ type: 'setEnabled', ids: [b.id], enabled: !isOn(b) });
+    const recipe = e.target.closest('[data-recipe]');
+    if (recipe && b?.kind === 'crafter') {
+      const index = Number(recipe.dataset.recipe);
+      issue({ type: 'setRecipe', id: b.id, index, on: !activeRecipeIndices(b).includes(index) });
+    }
     if (e.target.closest('[data-output]') && b?.kind === 'storage') issue({ type: 'setStorageOutput', id: b.id, open: !b.outputOpen });
     if (raise && b?.priority) {
       issue({ type: 'setPriority', id: b.id, priority: raisePriority(b.priority, b.dir, b.shape, Number(raise.dataset.raise)) });
@@ -68,7 +79,7 @@ const tooltip = Object.assign(document.createElement('div'), { id: 'chipTooltip'
 document.body.append(tooltip);
 
 /** Familles d'items, d'après leur forme (voir data/items.js). */
-const FAMILY = { ore: 'family.ore', ingot: 'family.ingot', plate: 'family.product', wire: 'family.product', belt: 'family.part' };
+const FAMILY = { ore: 'family.ore', ingot: 'family.ingot', plate: 'family.product', wire: 'family.product', belt: 'family.part', rubble: 'family.waste' };
 /** « l'envoyer à gauche », « tout droit », « à droite ». */
 const toward = (dir, side) => t(`toward.${sideKey(dir, side)}`);
 
@@ -91,9 +102,8 @@ function renderChipTooltip() {
     + `<small>${t(chosen ? 'panel.filter.stop' : 'panel.filter.send', { toward: toward(b.dir, side) })}</small>`;
   tooltip.hidden = false;
   const r = tipFor.rect;
-  const w = tooltip.offsetWidth, h = tooltip.offsetHeight;
-  tooltip.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2))}px`;
-  tooltip.style.top = `${r.top - h - 6 < 8 ? r.bottom + 6 : r.top - h - 6}px`;
+  const { w, h } = screenSize(tooltip);
+  placeScaled(tooltip, Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2)), r.top - h - 6 < 8 ? r.bottom + 6 : r.top - h - 6);
 }
 
 export function closeInfoPanel() {
@@ -128,6 +138,7 @@ export function updateInfoPanel() {
 function describe(b) {
   if (isConveyor(b)) return describeConveyor(b);
   if (b.kind === 'storage') return describeStorage(b);
+  if (b.kind === 'dump') return describeDump(b);
   return describeMachine(b);
 }
 
@@ -157,6 +168,17 @@ function describeStorage(b) {
   };
 }
 
+/** Décharge : ce qu'elle a jeté depuis sa pose. */
+function describeDump(b) {
+  return {
+    title: buildingName(b.type),
+    status: { label: t('panel.dump.status'), tone: b.flash > 0 ? 'ok' : 'idle' },
+    sections: [
+      { label: t('panel.dump.destroyed'), aside: t('panel.dump.aside'), html: `<div class="ip-row">${b.destroyed}</div>` },
+    ],
+  };
+}
+
 function describeMachine(b) {
   const def = BUILDINGS[b.type];
   const outFull = b.outputs.length >= outputCapacity(b);
@@ -165,17 +187,21 @@ function describeMachine(b) {
   if (b.kind === 'drill') status = b.working ? { label: t('panel.status.running'), tone: 'ok' } : { label: t('panel.status.outputFull'), tone: 'warn' };
   else if (b.current) status = { label: t('panel.status.running'), tone: 'ok' };
   else if (outFull) status = { label: t('panel.status.outputFull'), tone: 'warn' };
+  if (!isOn(b)) status = { label: t('panel.status.off'), tone: 'off' };
 
   const busy = b.kind === 'drill' ? b.working : !!b.current;
   let making;
-  if (def.assembly) {
-    making = assemblyHtml(def.assembly);
+  if (b.kind === 'drill') {
+    making = recipeHtml(null, b.ore);
+  } else if (busy && b.currentRecipe != null) {
+    making = recipeRowHtml(recipesOf(b.type)[b.currentRecipe]);
   } else {
-    const recipes = b.kind === 'drill' ? [[null, b.ore]] : Object.entries(def.recipes);
-    making = busy
-      ? recipeHtml(b.kind === 'drill' ? null : b.currentInput, b.kind === 'drill' ? b.ore : b.current)
-      : `<span class="ip-muted">${t('panel.recipes')}</span>${recipes.map(([from, to]) => recipeHtml(from, to)).join('<span class="ip-sep">·</span>')}`;
+    const active = activeRecipes(b);
+    making = active.length
+      ? active.map(({ recipe }) => recipeRowHtml(recipe)).join('<span class="ip-sep">·</span>')
+      : `<span class="ip-muted">${t('panel.recipes.none')}</span>`;
   }
+  const most = b.kind === 'crafter' ? Math.max(1, ...activeRecipes(b).map(({ recipe }) => yieldOf(recipe))) : 1;
 
   const stocks = [];
   if (inputCapacity(b)) stocks.push(stockHtml(t('panel.input'), b.inputs, inputCapacity(b)));
@@ -192,10 +218,16 @@ function describeMachine(b) {
     status,
     sections: [
       { label: t('panel.production'),
-        aside: def.assembly ? t('panel.perCraft', { s: decimal(def.time), n: def.assembly.count }) : t('panel.perItem', { s: decimal(def.time) }),
+        aside: most > 1 ? t('panel.perCraft', { s: decimal(def.time), n: most }) : t('panel.perItem', { s: decimal(def.time) }),
         html: `<div class="ip-row">${making}</div>${bar(busy ? b.progress : 0)}` },
-      { label: t('panel.stock'), html: stocks.join('') },
+      ...(b.kind === 'crafter' ? [recipeSection(b)] : []),
+      { label: t('panel.stock'), aside: def.residue ? t('panel.residue.aside', { n: def.residue.every }) : '', html: stocks.join('') },
       { label: t('panel.rate'), html: rateHtml(actual, max) },
+      // Marche / arrêt (touche O en survolant la machine)
+      { label: t('panel.power'), aside: t('panel.power.aside'), html: `
+        <button type="button" class="ip-power${isOn(b) ? '' : ' off'}" data-power>
+          ${t(isOn(b) ? 'panel.power.turnOff' : 'panel.power.turnOn')}
+        </button>` },
     ],
   };
 }
@@ -203,13 +235,20 @@ function describeMachine(b) {
 function describeConveyor(b) {
   const flow = flowSummary(b);
   let status = { label: t('panel.status.empty'), tone: 'idle' };
-  if (b.stalled) status = { label: t('panel.status.blocked'), tone: 'warn' };
+  const refused = refusal(b);
+  if (refused) status = { label: t('panel.status.refused', { machine: buildingName(refused.target.type) }), tone: 'warn' };
+  else if (b.stalled) status = { label: t('panel.status.blocked'), tone: 'warn' };
   else if (b.item) status = { label: t('panel.status.moving'), tone: 'ok' };
 
   const sections = [
-    { label: t('panel.carrying'), html: `<div class="ip-row">${b.item ? `${icon(b.item.type)} ${itemName(b.item.type)}` : `<span class="ip-muted">${t('panel.nothing')}</span>`}</div>` },
+    { label: t('panel.carrying'), html: `<div class="ip-row">${b.item
+      ? `${icon(b.item.type)} ${itemName(b.item.type)}
+        <button type="button" class="ip-clear" data-clear title="${t(isStockItem(b.item.type) ? 'panel.clear.title.stock' : 'panel.clear.title')}">${t('panel.clear')}</button>`
+      : `<span class="ip-muted">${t('panel.nothing')}</span>`}</div>` },
     { label: t('panel.throughput'), html: rateHtml(flow.perMinute, BELT_MAX_PER_MINUTE) + gauge((flow.perMinute ?? 0) / BELT_MAX_PER_MINUTE) },
   ];
+  // Bloqué par une machine qui refuse l'item : pourquoi, et quoi faire.
+  if (refused) sections.unshift({ label: t('panel.refused'), html: `<div class="ip-refused">${refusalText(refused)}</div>` });
   if (flow.byItem.length > 1 || (flow.byItem.length === 1 && b.kind === 'belt')) {
     sections.push({ label: t('panel.byItem'), html: `<div class="ip-row ip-wrap">${flow.byItem
       .map((f) => `${icon(f.itemType)}<span>${rate(f.perMinute)}</span>`).join('<span class="ip-sep">·</span>')}</div>` });
@@ -289,8 +328,25 @@ const perMinute = (n) => (n < 10 ? decimal(n) : String(Math.round(n)));
 const rate = (n) => t('panel.perMinute', { n: perMinute(n) });
 const icon = (type) => `<img class="ip-item" src="${itemIconUrl(type)}" alt="${itemName(type)}" title="${itemName(type)}">`;
 /** Ex. [plaque] + [fil] → [tapis] ×2 */
-const assemblyHtml = ({ inputs, output, count }) =>
-  `${Object.keys(inputs).map(icon).join('<span class="ip-sep">+</span>')}<span class="ip-sep">→</span>${icon(output)}<span>×${count}</span>`;
+const recipeRowHtml = (recipe) =>
+  `${ingredientsOf(recipe).map(icon).join('<span class="ip-sep">+</span>')}<span class="ip-sep">→</span>${icon(recipe.out)}${yieldOf(recipe) > 1 ? `<span>×${yieldOf(recipe)}</span>` : ''}`;
+
+/**
+ * Les recettes possibles de la machine, chacune à allumer ou éteindre. Une seule active
+ * par ingrédient : en allumer une éteint celle qui utilise le même.
+ */
+function recipeSection(b) {
+  const active = new Set(activeRecipeIndices(b));
+  return {
+    label: t('panel.recipeChoice'),
+    aside: t('panel.recipeChoice.aside'),
+    html: `<div class="ip-recipes">${recipesOf(b.type).map((recipe, i) => `
+      <button type="button" class="ip-recipe" data-recipe="${i}" aria-pressed="${active.has(i)}"
+        title="${ingredientsOf(recipe).map(itemName).join(' + ')} → ${yieldOf(recipe)} ${itemName(recipe.out)}">
+        ${recipeRowHtml(recipe)}
+      </button>`).join('')}</div>`,
+  };
+}
 const recipeHtml = (from, to) => `${from ? `${icon(from)}<span class="ip-sep">→</span>` : ''}${icon(to)}`;
 const bar = (fraction) => `<div class="ip-bar"><i style="width:${Math.round(fraction * 100)}%"></i></div>`;
 const gauge = (fraction) => `<div class="ip-gauge"><i style="width:${Math.round(Math.min(1, fraction) * 100)}%"></i></div>`;
@@ -388,11 +444,10 @@ function place(b) {
   panel.hidden = offscreen;
   if (offscreen) return;
 
-  const w = panel.offsetWidth, h = panel.offsetHeight;
+  const { w, h } = screenSize(panel);
   const below = top - h - GAP < 8;
   const left = Math.max(8, Math.min(innerWidth - w - 8, centerX - w / 2));
-  panel.style.left = `${left}px`;
-  panel.style.top = `${below ? bottom + GAP : top - h - GAP}px`;
+  placeScaled(panel, left, below ? bottom + GAP : top - h - GAP);
   panel.classList.toggle('below', below);
-  panel.style.setProperty('--arrow-x', `${Math.max(16, Math.min(w - 16, centerX - left))}px`);
+  panel.style.setProperty('--arrow-x', `${Math.max(16, Math.min(w - 16, centerX - left)) / uiScale()}px`);
 }

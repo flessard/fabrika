@@ -2,9 +2,11 @@
 import { TILE } from '../config.js';
 import { ui, view } from '../state.js';
 import { buildingAt } from '../world/buildings.js';
-import { clearSelection, eraseSelection, startCopy, startMove } from '../input/selection.js';
+import { clearSelection, eraseSelection, startCopy, startMove, togglePowerSelection } from '../input/selection.js';
+import { canBePowered } from '../data/buildings.js';
 import { on } from '../core/events.js';
 import { tn } from '../i18n/index.js';
+import { placeScaled, screenSize } from './uiScale.js';
 
 const GAP = 8;
 const menu = document.getElementById('selMenu');
@@ -16,6 +18,7 @@ export function initSelectionMenu() {
     if (action === 'move') startMove();
     else if (action === 'copy') startCopy();
     else if (action === 'erase') eraseSelection();
+    else if (action === 'power') togglePowerSelection();
     else if (action === 'close') clearSelection();
   });
   on('lang:changed', () => { shownCount = -1; }); // le compte sera réécrit dans la nouvelle langue
@@ -36,6 +39,8 @@ export function updateSelectionMenu() {
     shownCount = group.length;
     menu.querySelector('.sm-count').textContent = tn('selection.count', group.length);
   }
+  // Marche / arrêt : seulement s'il y a des machines dans la sélection.
+  document.getElementById('smPower').hidden = !group.some(canBePowered);
   menu.hidden = false;
   place(group);
 }
@@ -49,9 +54,8 @@ function place(group) {
   const top = (y0 * TILE - 6 - view.camY) * z; // au-dessus des barres de progression
   const bottom = (y1 * TILE - view.camY) * z;
 
-  const w = menu.offsetWidth, h = menu.offsetHeight;
+  const { w, h } = screenSize(menu);
   const below = top - h - GAP < 8;
   const y = below ? Math.min(bottom + GAP, innerHeight - h - 112) : top - h - GAP;
-  menu.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, centerX - w / 2))}px`;
-  menu.style.top = `${Math.max(8, y)}px`;
+  placeScaled(menu, Math.max(8, Math.min(innerWidth - w - 8, centerX - w / 2)), Math.max(8, y));
 }

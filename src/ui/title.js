@@ -21,6 +21,7 @@ import { startNewMap } from '../world/map.js';
 import { loadFromBrowser, savedInBrowser } from '../world/save.js';
 import { playSound } from '../audio/sounds.js';
 import { closeLevelCard, showLevelCard } from './levelCard.js';
+import { closeResearch } from './research.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -59,6 +60,7 @@ export function openTitle() {
   ui.screen = 'title';
   ui.selected = null;
   closeLevelCard();
+  closeResearch();
   document.body.classList.add('title');
   $('title').hidden = false;
   showPage('main');

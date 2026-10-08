@@ -13,13 +13,14 @@ import { currentCtx, drawOn, rect, withAlpha } from './pen.js';
 import { bakeTerrain } from './terrainImage.js';
 import { bakeFog } from './fogImage.js';
 import { fogVersion } from '../world/fog.js';
-import { cameraOrigin, carriedItemPosition, conveyorFrame, machinePorts, selectionOutline, selectionOverlay, cursorPreview, isVisible, visibleCells, waterSparkles } from './scene.js';
+import { cameraOrigin, carriedItemPosition, conveyorFrame, machinePorts, refusalMarks, selectionOutline, selectionOverlay, cursorPreview, isVisible, visibleCells, waterSparkles } from './scene.js';
 import {
   beltColors, beltFrame, drawBelt, drawFilter, drawMerger, drawMergerBase, drawMergerLid, drawSmartSplitter, drawSplitter,
   drawTunnel, drawTunnelBase, drawTunnelLid, drawUnderBelt,
 } from './sprites/belts.js';
 import { ITEM_SIZE, itemSprite } from './sprites/items.js';
 import { drawMachine } from './sprites/machines.js';
+import { BUBBLE_H, BUBBLE_W, CROSS_SIZE, drawRefusalBubble, drawRefusalCross } from './sprites/refusal.js';
 import { HIGHLIGHT_MARGIN, groupOutline, highlightFrame, selectionHighlight } from './sprites/highlight.js';
 import { DOCK_SIZE, PORT_SIZE, drawDock, drawPort } from './sprites/ports.js';
 
@@ -98,6 +99,12 @@ export function createCanvasRenderer(canvas) {
       if (ui.layer === 'under') {
         withAlpha(0.8, () => rect(0, 0, view.width, view.height, P.soot));
         drawConveyors(conveyors.filter((b) => isUnderground(b) || BUILDINGS[b.type].tunnel));
+      }
+
+      // Par-dessus tout : les items refusés par une machine.
+      for (const m of refusalMarks(visible, time)) {
+        if (m.kind === 'bubble') drawRefusalBubble(Math.round(m.x - BUBBLE_W / 2 - ox), m.y - BUBBLE_H - oy, m.item, m.bright);
+        else drawRefusalCross(Math.round(m.x - CROSS_SIZE / 2 - ox), Math.round(m.y - CROSS_SIZE / 2 - oy), m.bright);
       }
 
       // Brouillard : ce qui reste à découvrir (redessiné seulement quand ça change).

@@ -5,19 +5,20 @@ import { hasInfoPanel } from '../data/buildings.js';
 import { ui, view } from '../state.js';
 import { buildingAt } from '../world/buildings.js';
 import { showCursorCell } from '../ui/hud.js';
-import { selectToolByKey, selectToolByNumber, setTool, toggleLayer } from '../ui/toolbar.js';
+import { closeTray, isTrayOpen, selectToolByKey, selectToolByNumber, setTool, toggleLayer } from '../ui/toolbar.js';
 import {
-  buildAt, cancelBeltPlan, commitBeltPlan, eraseAt, extendBeltPlan, priorityAction, rotateAction, shapeAction, startBeltPlan,
+  buildAt, cancelBeltPlan, commitBeltPlan, eraseAt, extendBeltPlan, powerAction, priorityAction, rotateAction, shapeAction, startBeltPlan,
 } from './actions.js';
 import {
   cancelPlacing, clearSelection, eraseSelection, extendSelectBox, finishSelectBox, placeGroupAt,
-  rotatePlacing, startCopy, startMove, startSelectBox,
+  rotatePlacing, startCopy, startMove, startSelectBox, togglePowerSelection,
 } from './selection.js';
 import { cellFromEvent, clampCamera, panBy, setZoom, worldFromEvent, zoomByWheel } from './camera.js';
 import { unlockAudio } from '../audio/engine.js';
 import { toggleSound } from '../ui/hud.js';
 import { openPause } from '../ui/pauseMenu.js';
 import { closeLevelCard, isLevelCardOpen } from '../ui/levelCard.js';
+import { closeResearch, isResearchOpen, toggleResearch } from '../ui/research.js';
 
 /** Touches enfoncées en ce moment (en minuscules ; ' ' pour la barre d'espace). */
 const keysDown = new Set();
@@ -180,6 +181,7 @@ function onKeyDown(e) {
   if (ui.selection.length) {
     if (key === 'x') return startMove();
     if (key === 'c') return startCopy();
+    if (key === 'o') return togglePowerSelection();
     if (key === 'delete' || key === 'backspace') return eraseSelection();
     if (key === 'escape') return clearSelection();
   }
@@ -187,15 +189,19 @@ function onKeyDown(e) {
   if (key === 'r') rotateAction(e.shiftKey);
   else if (key === 'f') shapeAction();
   else if (key === 'p') priorityAction();
+  else if (key === 'o') powerAction();
   else if (key === 'escape') {
     // Échap annule d'abord ce qui est en cours ; quand il n'y a plus rien, il ouvre le menu.
-    if (isLevelCardOpen()) closeLevelCard();
+    if (isTrayOpen()) closeTray();
+    else if (isResearchOpen()) closeResearch();
+    else if (isLevelCardOpen()) closeLevelCard();
     else if (ui.selected || ui.tool !== 'hand') {
       ui.selected = null;
       setTool('hand');
     } else openPause(e);
   }
   else if (key === 'm') toggleSound();
+  else if (key === 'k') toggleResearch();
   else if (key === 'u') toggleLayer();
   // Au clavier, des crans entiers (les pixels restent parfaitement nets).
   else if (key === '+' || key === '=') setZoom(Math.floor(view.zoom + 1e-6) + 1);

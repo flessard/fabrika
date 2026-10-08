@@ -19,6 +19,7 @@
       <span class="brand-right">
         <span id="hudOnline" hidden></span>
         <span id="boardLbl"></span>
+        <button id="researchButton" type="button" data-i18n-title="research.open"><span data-i18n="research.button"></span><i id="researchBadge" hidden></i></button>
         <button id="menuButton" type="button" data-i18n="hud.menu" data-i18n-title="pause.open"></button>
       </span>
     </div>
@@ -51,6 +52,10 @@
           <span data-i18n="hud.lang"></span>
           <select id="lang"></select>
         </label>
+        <label class="pause-row lang">
+          <span data-i18n="pause.uiScale"></span>
+          <select id="uiScale"></select>
+        </label>
         <!-- Multijoueur (voir src/ui/multiplayer.js et src/net/client.js). -->
         <div class="pause-row mp">
           <span data-i18n="mp.title"></span>
@@ -81,6 +86,16 @@
     </div>
   </div>
 
+  <!-- Arbre de recherche (voir src/ui/research.js). -->
+  <div id="research" hidden>
+    <div class="rs-card panel">
+      <div class="pause-head"><b data-i18n="research.title"></b><button id="rsClose" type="button" class="rs-close" data-i18n-aria="research.close">×</button></div>
+      <p class="rs-intro" data-i18n="research.intro"></p>
+      <div id="rsBank" class="rs-bank"></div>
+      <div id="rsTree" class="rs-tree"></div>
+    </div>
+  </div>
+
   <!-- Mini-carte (voir src/render/minimap.js). -->
   <div id="miniWrap" class="panel">
     <canvas id="mini" width="128" height="96"></canvas>
@@ -99,6 +114,7 @@
     <span class="sm-count"></span>
     <button type="button" data-action="move"><span data-i18n="selection.move"></span> <kbd>X</kbd></button>
     <button type="button" data-action="copy"><span data-i18n="selection.copy"></span> <kbd>C</kbd></button>
+    <button type="button" data-action="power" id="smPower"><span data-i18n="selection.power"></span> <kbd>O</kbd></button>
     <button type="button" data-action="erase" class="sm-danger"><span data-i18n="selection.erase"></span> <kbd data-i18n="selection.deleteKey"></kbd></button>
     <button type="button" data-action="close" class="sm-close" data-i18n-title="selection.close" data-i18n-aria="selection.close">×</button>
   </div>

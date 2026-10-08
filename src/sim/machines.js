@@ -3,19 +3,27 @@
 import { TILE } from '../config.js';
 import { emit } from '../core/events.js';
 import { game } from '../state.js';
-import { BUILDINGS, inputCapacity, outputCapacity } from '../data/buildings.js';
+import { BUILDINGS, isOn, outputCapacity } from '../data/buildings.js';
+import { ITEMS } from '../data/items.js';
+import { activeRecipes, ingredientsOf, recipeUsing, yieldOf } from '../data/recipes.js';
 import { outputCell } from '../world/buildings.js';
 import { spawnDust, spawnItemIcon, spawnSmoke, spawnSparks } from './particles.js';
 import { pushItem } from './transfer.js';
 import { flowSummary, recordFlow } from './flow.js';
 import { recordDelivery } from './levels.js';
+import { addCredit } from './research.js';
 import { addToStock, isStockItem } from '../world/inventory.js';
 import { insertIntoStorage, storageCouldAccept } from './storage.js';
 
 /** Une machine reçoit un item. Retourne vrai s'il est accepté. */
 export function insertIntoMachine(machine, itemType) {
   if (machine.kind === 'hub') {
+    if (ITEMS[itemType]?.waste) return false; // le dépôt ne prend pas les résidus
     deliver(machine, itemType);
+    return true;
+  }
+  if (machine.kind === 'dump') {
+    destroy(machine, itemType);
     return true;
   }
   if (machine.kind === 'storage') return insertIntoStorage(machine, itemType);
@@ -25,26 +33,48 @@ export function insertIntoMachine(machine, itemType) {
 }
 
 /**
- * Comme insertIntoMachine, mais sans rien changer. L'Assembleur garde une réserve par
- * ingrédient : un flot de plaques ne bloque pas l'arrivée des fils.
+ * Comme insertIntoMachine, mais sans rien changer. Une machine n'accepte que les
+ * ingrédients de ses recettes actives, avec une réserve par ingrédient : un flot de
+ * plaques ne bloque pas l'arrivée des fils.
  */
+/**
+ * La machine refuse-t-elle cet item tel qu'elle est réglée ? (Pas « pleine pour
+ * l'instant » : elle ne le prendra jamais.) Le dépôt refuse les résidus, une machine
+ * les items sans recette active, une foreuse tout.
+ */
+export function machineRefuses(machine, itemType) {
+  if (machine.kind === 'hub') return !!ITEMS[itemType]?.waste;
+  if (machine.kind === 'crafter') return !recipeUsing(machine, itemType);
+  return machine.kind === 'drill';
+}
+
 export function machineCouldAccept(machine, itemType) {
-  if (machine.kind === 'hub') return true;
+  if (machine.kind === 'hub') return !ITEMS[itemType]?.waste;
+  if (machine.kind === 'dump') return true;
   if (machine.kind === 'storage') return storageCouldAccept(machine, itemType);
   if (machine.kind !== 'crafter') return false;
-  const def = BUILDINGS[machine.type];
-  if (def.assembly) {
-    if (!def.assembly.inputs[itemType]) return false;
-    return machine.inputs.filter((t) => t === itemType).length < def.storage.input;
-  }
-  return !!def.recipes[itemType] && machine.inputs.length < inputCapacity(machine);
+  if (!recipeUsing(machine, itemType)) return false;
+  return machine.inputs.filter((t) => t === itemType).length < BUILDINGS[machine.type].storage.input;
+}
+
+/** La décharge détruit l'item : un peu de poussière, et c'est tout. */
+function destroy(dump, itemType) {
+  dump.destroyed++;
+  dump.flash = 0.25;
+  spawnDust(dump.x * TILE + 4 + Math.random() * 8, dump.y * TILE + 6);
+}
+
+export function stepDump(dump, dt) {
+  dump.flash = Math.max(0, dump.flash - dt);
 }
 
 function deliver(hub, itemType) {
   game.delivered[itemType] = (game.delivered[itemType] ?? 0) + 1;
   recordDelivery(itemType);
-  // Un objet de construction (un tapis…) livré au dépôt va dans l'inventaire.
+  // Un objet de construction (un tapis…) livré au dépôt va dans l'inventaire ; le reste
+  // peut se dépenser dans l'arbre de recherche.
   if (isStockItem(itemType)) addToStock(itemType);
+  else addCredit(itemType);
   hub.flash = 0.3;
   spawnItemIcon(itemType, (hub.x + 1.5) * TILE, (hub.y + 0.6) * TILE);
   emit('item:delivered', { itemType, x: (hub.x + 1.5) * TILE, y: (hub.y + 1.5) * TILE });
@@ -53,7 +83,8 @@ function deliver(hub, itemType) {
 /** Cadence d'une machine : réelle (mesurée) et maximale, en items par minute. */
 export function productionRate(machine) {
   const def = BUILDINGS[machine.type];
-  return { actual: flowSummary(machine).perMinute, max: (60 / def.time) * (def.assembly?.count ?? 1) };
+  const most = machine.kind === 'crafter' ? Math.max(1, ...activeRecipes(machine).map(({ recipe }) => yieldOf(recipe))) : 1;
+  return { actual: flowSummary(machine).perMinute, max: (60 / def.time) * most };
 }
 
 /** Pousse le premier item fini vers la case de sortie. */
@@ -64,8 +95,10 @@ function emitOutput(machine) {
 }
 
 export function stepDrill(drill, dt) {
-  const { time } = BUILDINGS[drill.type];
-  drill.working = drill.outputs.length < outputCapacity(drill);
+  const { time, residue } = BUILDINGS[drill.type];
+  // Arrêtée : elle ne creuse plus et ne sort plus rien (sa progression reste où elle était).
+  drill.working = isOn(drill) && drill.outputs.length < outputCapacity(drill);
+  if (!isOn(drill)) return;
   if (drill.working) {
     drill.progress += dt / time;
     drill.anim += dt * 9;
@@ -73,6 +106,12 @@ export function stepDrill(drill, dt) {
       drill.progress = 0;
       drill.outputs.push(drill.ore);
       recordFlow(drill, drill.ore);
+      // Tous les `every` minerais, un résidu sort aussi, sur le même tapis : il faudra le trier.
+      drill.dug = (drill.dug ?? 0) + 1;
+      if (residue && drill.dug % residue.every === 0) {
+        drill.outputs.push(residue.item);
+        recordFlow(drill, residue.item);
+      }
     }
     // Le hasard ne sert qu'aux effets visuels : l'usine, elle, reste identique chez tous.
     if (Math.random() < dt * 3) spawnDust(drill.x * TILE + 8 + Math.random() * 16, drill.y * TILE + 15);
@@ -80,25 +119,23 @@ export function stepDrill(drill, dt) {
   emitOutput(drill);
 }
 
-/** Transformateur générique : prend un item en entrée, le transforme selon sa recette. */
+/** Transformateur générique : quand il a les ingrédients d'une recette active, il la fabrique. */
 export function stepCrafter(machine, dt) {
-  const { time, recipes, assembly } = BUILDINGS[machine.type];
-
-  if (!machine.current) {
-    if (assembly) startAssembly(machine, assembly);
-    else if (machine.inputs.length && machine.outputs.length < outputCapacity(machine)) {
-      machine.currentInput = machine.inputs.shift();
-      machine.current = recipes[machine.currentInput];
-      machine.progress = 0;
-    }
+  const { time } = BUILDINGS[machine.type];
+  // Arrêtée : elle garde son stock (et en accepte encore), mais ne fabrique ni ne sort rien.
+  if (!isOn(machine)) {
+    machine.working = false;
+    return;
   }
+
+  if (!machine.current) startRecipe(machine);
   machine.working = !!machine.current;
 
   if (machine.current) {
     machine.progress += dt / time;
     machine.anim += dt;
     if (machine.progress >= 1) {
-      const count = assembly?.count ?? 1;
+      const count = machine.currentCount ?? 1;
       for (let i = 0; i < count; i++) {
         recordFlow(machine, machine.current);
         machine.outputs.push(machine.current);
@@ -110,17 +147,29 @@ export function stepCrafter(machine, dt) {
   emitOutput(machine);
 }
 
-/** L'Assembleur démarre quand il a tous ses ingrédients et la place de ranger ce qu'il fabrique. */
-function startAssembly(machine, { inputs, output, count }) {
+/**
+ * Démarre une recette active dont tous les ingrédients sont là, s'il y a la place de
+ * ranger ce qu'elle donne. On regarde les items dans l'ordre d'arrivée : le plus ancien
+ * passe en premier (pas de recette oubliée).
+ */
+function startRecipe(machine) {
   const have = (item) => machine.inputs.filter((t) => t === item).length;
-  if (!Object.entries(inputs).every(([item, n]) => have(item) >= n)) return;
-  if (machine.outputs.length + count > outputCapacity(machine)) return;
-  for (const [item, n] of Object.entries(inputs)) {
-    for (let i = 0; i < n; i++) machine.inputs.splice(machine.inputs.indexOf(item), 1);
+  for (const item of new Set(machine.inputs)) {
+    const found = recipeUsing(machine, item);
+    if (!found) continue; // recette éteinte depuis : l'item attend qu'on la rallume
+    const { index, recipe } = found;
+    if (!Object.entries(recipe.in).every(([need, n]) => have(need) >= n)) continue;
+    if (machine.outputs.length + yieldOf(recipe) > outputCapacity(machine)) return;
+    for (const [need, n] of Object.entries(recipe.in)) {
+      for (let i = 0; i < n; i++) machine.inputs.splice(machine.inputs.indexOf(need), 1);
+    }
+    machine.currentRecipe = index;
+    machine.currentInput = ingredientsOf(recipe).length === 1 ? item : null;
+    machine.current = recipe.out;
+    machine.currentCount = yieldOf(recipe);
+    machine.progress = 0;
+    return;
   }
-  machine.currentInput = null;
-  machine.current = output;
-  machine.progress = 0;
 }
 
 export function stepHub(hub, dt) {

@@ -1,6 +1,6 @@
 // Palette d'outils en bas de l'écran.
 import { RIGHT, turnRight } from '../core/grid.js';
-import { TOOLS, toolWorksOn } from '../data/buildings.js';
+import { TOOLS, isBuildTool, toolWorksOn } from '../data/buildings.js';
 import { PALETTE as P } from '../data/palette.js';
 import { ui } from '../state.js';
 import { playSound } from '../audio/sounds.js';
@@ -9,8 +9,10 @@ import { drawBelt, drawFilter, drawMerger, drawSmartSplitter, drawSplitter, draw
 import { machineSprite } from '../render/sprites/machines.js';
 import { cancelPlacing, clearSelection, rotatePlacing } from '../input/selection.js';
 import { on } from '../core/events.js';
-import { toolName } from '../i18n/index.js';
+import { t, toolName } from '../i18n/index.js';
 import { stockOf } from '../world/inventory.js';
+import { toolUnlocked } from '../sim/research.js';
+import { openResearch } from './research.js';
 
 let gameCanvas = null;
 
@@ -55,6 +57,7 @@ const ICONS = {
     rect(26, 8, 2, 5, P.cream);
   },
   belt: () => scaled2(() => drawBelt(0, 0, RIGHT, [RIGHT, 2], 0)),
+  dump: () => scaled2(() => currentCtx().drawImage(machineSprite('dump'), 0, 0)),
   splitter: () => scaled2(() => drawSplitter(0, 0, RIGHT, 'T', 0)),
   smartSplitter: () => scaled2(() => drawSmartSplitter(0, 0, RIGHT, 'YR', ['F', 'L', 'R'], 0)),
   merger: () => scaled2(() => drawMerger(0, 0, RIGHT, '+', 0)),
@@ -85,6 +88,56 @@ function scaled2(draw) {
 
 const iconFor = (id) => makeCanvas(32, 32, (ctx) => (ICONS[id] ? ICONS[id]() : ctx.drawImage(machineSprite(id), 0, 0)));
 
+const iconUrls = new Map();
+/** L'icône d'un outil en image (pour l'arbre de recherche). */
+export function toolIconUrl(id) {
+  if (!iconUrls.has(id)) iconUrls.set(id, iconFor(id).toDataURL());
+  return iconUrls.get(id);
+}
+
+/** Petit cadenas 9 × 10, posé sur les outils pas encore débloqués. */
+function lockIcon() {
+  return makeCanvas(9, 10, () => {
+    rect(1, 0, 7, 6, P.black);
+    rect(2, 1, 5, 4, P.steel);
+    rect(3, 2, 3, 3, P.black);
+    rect(0, 4, 9, 6, P.black);
+    rect(1, 5, 7, 4, P.amber);
+    rect(1, 5, 7, 1, P.yellow);
+    rect(4, 6, 1, 2, P.black);
+  }).toDataURL();
+}
+
+// ---------- Organisation de la palette ----------
+//
+// La barre ne montre que l'essentiel : les trois modes (Déplacer, Sélection, Gomme), le
+// Tapis (l'outil le plus utilisé, avec son stock), puis trois familles de bâtiments.
+// Une famille est un seul bouton, qui montre son dernier outil choisi : un clic ouvre un
+// petit plateau au-dessus avec tous ses bâtiments ; sa touche passe au suivant.
+// Tourner n'apparaît que quand on tient un bâtiment ; Sous-sol reste au bout.
+
+/** Boutons simples, avec leur chiffre. */
+const SLOTS = [
+  { id: 'hand', key: '1' },
+  { id: 'select', key: '2' },
+  { id: 'erase', key: '3' },
+  { id: 'belt', key: '4', separatorBefore: true },
+];
+
+/** Familles de bâtiments (l'ordre du plateau est celui de la liste). */
+const GROUPS = [
+  { id: 'logistics', key: '5', tools: ['splitter', 'smartSplitter', 'filter', 'merger', 'tunnel'] },
+  { id: 'production', key: '6', tools: ['drill', 'furnace', 'press', 'assembler'] },
+  { id: 'storage', key: '7', tools: ['container', 'dump'] },
+];
+
+const groupOf = (toolId) => GROUPS.find((g) => g.tools.includes(toolId)) ?? null;
+const letterOf = (toolId) => TOOLS.find((tool) => tool.id === toolId)?.key ?? '';
+const usable = (toolId) => toolUnlocked(toolId) && toolWorksOn(toolId, ui.layer);
+
+/** Dernier outil choisi dans chaque famille : c'est lui que montre son bouton. */
+const lastInGroup = Object.fromEntries(GROUPS.map((g) => [g.id, g.tools[0]]));
+
 function toolButton({ id, label, key, onClick }) {
   const button = document.createElement('button');
   button.type = 'button';
@@ -92,11 +145,14 @@ function toolButton({ id, label, key, onClick }) {
   button.id = `tool-${id}`;
   const kbd = document.createElement('kbd');
   kbd.textContent = key;
+  const icon = new Image();
+  icon.src = toolIconUrl(id);
+  icon.alt = '';
   const name = document.createElement('span');
   name.className = 'tool-name';
   name.dataset.toolName = id;
   name.textContent = label;
-  button.append(kbd, iconFor(id), name);
+  button.append(kbd, icon, name);
   button.addEventListener('click', onClick);
   return button;
 }
@@ -107,31 +163,136 @@ export function buildToolbar(canvas) {
   gameCanvas = canvas;
   const bar = document.getElementById('bar');
 
-  NUMBERED.forEach((tool, i) => { tool.number = (i + 1) % 10; });
-  for (const tool of TOOLS) {
-    if (tool.separatorBefore) bar.append(separator());
-    const button = toolButton({ id: tool.id, label: toolName(tool.id), key: tool.key ?? tool.number, onClick: () => setTool(tool.id) });
-    button.dataset.tool = tool.id;
+  for (const slot of SLOTS) {
+    if (slot.separatorBefore) bar.append(separator());
+    const button = toolButton({ id: slot.id, label: toolName(slot.id), key: slot.key, onClick: () => setTool(slot.id) });
+    button.dataset.tool = slot.id;
     bar.append(button);
   }
-
-  bar.append(separator());
-  bar.append(toolButton({ id: 'rotate', label: toolName('rotate'), key: 'R', onClick: () => {
-    if (ui.placing) rotatePlacing();
-    else ui.dir = turnRight(ui.dir);
-  } }));
   // Le bouton Tapis montre combien il en reste en stock.
   const count = document.createElement('i');
   count.className = 'tool-count';
   bar.querySelector('#tool-belt').append(count);
 
+  for (const group of GROUPS) bar.append(groupButton(group));
+
+  bar.append(separator());
+  const rotate = toolButton({ id: 'rotate', label: toolName('rotate'), key: 'R', onClick: () => {
+    if (ui.placing) rotatePlacing();
+    else ui.dir = turnRight(ui.dir);
+  } });
+  // Seulement quand on tient un bâtiment (voir updateToolCounts). Sa place reste
+  // réservée : la barre, centrée, ne bouge pas quand il apparaît.
+  rotate.classList.add('idle');
+  bar.append(rotate);
   const layerButton = toolButton({ id: 'layer', label: toolName('layer'), key: 'U', onClick: toggleLayer });
   layerButton.setAttribute('aria-pressed', 'false');
   bar.append(layerButton);
 
+  // Un clic ailleurs referme le plateau ouvert.
+  addEventListener('pointerdown', (e) => { if (!e.target.closest('.tool-group')) closeTray(); }, true);
+
   on('lang:changed', () => {
     for (const span of bar.querySelectorAll('[data-tool-name]')) span.textContent = toolName(span.dataset.toolName);
+    for (const span of bar.querySelectorAll('[data-group-name]')) span.textContent = t(`group.${span.dataset.groupName}`);
   });
+
+  bar.style.setProperty('--lock-icon', `url(${lockIcon()})`);
+  on('map:new', showLocks);
+  on('research:done', showLocks);
+  showLocks();
+}
+
+/** Bouton d'une famille, avec son plateau (caché) au-dessus. */
+function groupButton(group) {
+  const wrap = document.createElement('div');
+  wrap.className = 'tool-group';
+  wrap.dataset.group = group.id;
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'tool group-btn';
+  button.title = t('toolbar.group.title', { key: group.key });
+  const kbd = document.createElement('kbd');
+  kbd.textContent = group.key;
+  const icon = new Image();
+  icon.alt = '';
+  icon.className = 'group-icon';
+  const name = document.createElement('span');
+  name.dataset.groupName = group.id;
+  name.textContent = t(`group.${group.id}`);
+  const caret = document.createElement('i');
+  caret.className = 'group-caret';
+  button.append(kbd, icon, name, caret);
+  button.addEventListener('click', () => (openTray === group.id ? closeTray() : showTray(group.id)));
+
+  const tray = document.createElement('div');
+  tray.className = 'tray panel';
+  tray.hidden = true;
+  for (const toolId of group.tools) {
+    const tile = toolButton({ id: toolId, label: toolName(toolId), key: letterOf(toolId), onClick: () => {
+      setTool(toolId);
+      closeTray();
+    } });
+    tile.dataset.tool = toolId;
+    tray.append(tile);
+  }
+
+  wrap.append(tray, button);
+  return wrap;
+}
+
+let openTray = null;
+let trayTimer = null;
+
+/** Ouvre le plateau d'une famille ; `briefly` : il se referme seul (choix au clavier). */
+function showTray(groupId, { briefly = false } = {}) {
+  clearTimeout(trayTimer);
+  if (openTray !== groupId) playSound('click');
+  openTray = groupId;
+  for (const wrap of document.querySelectorAll('.tool-group')) {
+    wrap.querySelector('.tray').hidden = wrap.dataset.group !== groupId;
+    wrap.classList.toggle('open', wrap.dataset.group === groupId);
+  }
+  if (briefly) trayTimer = setTimeout(closeTray, 1400);
+}
+
+export function closeTray() {
+  clearTimeout(trayTimer);
+  openTray = null;
+  for (const wrap of document.querySelectorAll('.tool-group')) {
+    wrap.querySelector('.tray').hidden = true;
+    wrap.classList.remove('open');
+  }
+}
+
+export const isTrayOpen = () => openTray !== null;
+
+/** Le bouton de chaque famille : l'icône de son dernier outil, enfoncé si on tient un de ses outils. */
+function showGroups() {
+  for (const group of GROUPS) {
+    const wrap = document.querySelector(`.tool-group[data-group="${group.id}"]`);
+    const button = wrap.querySelector('.group-btn');
+    button.querySelector('.group-icon').src = toolIconUrl(lastInGroup[group.id]);
+    button.setAttribute('aria-pressed', String(group.tools.includes(ui.tool)));
+    button.classList.toggle('unavailable', !group.tools.some((id) => toolWorksOn(id, ui.layer)));
+    button.classList.toggle('locked', !group.tools.some(toolUnlocked));
+  }
+}
+
+/** Les outils pas encore débloqués sont grisés, avec un cadenas ; un clic ouvre l'arbre. */
+function showLocks() {
+  for (const button of document.querySelectorAll('.tool[data-tool]')) {
+    const locked = !toolUnlocked(button.dataset.tool);
+    button.classList.toggle('locked', locked);
+    button.title = locked ? t('research.locked.title') : '';
+  }
+  // Une famille ne montre pas un outil verrouillé s'il y en a un autre de disponible.
+  for (const group of GROUPS) {
+    if (!toolUnlocked(lastInGroup[group.id])) lastInGroup[group.id] = group.tools.find(toolUnlocked) ?? group.tools[0];
+  }
+  if (!toolUnlocked(ui.tool)) setTool('hand');
+  showGroups();
 }
 
 /**
@@ -142,6 +303,7 @@ export function toggleLayer() {
   playSound('click');
   cancelPlacing();
   clearSelection();
+  closeTray();
   ui.selected = null;
   ui.layer = ui.layer === 'surface' ? 'under' : 'surface';
   document.body.classList.toggle('underground', ui.layer === 'under');
@@ -150,9 +312,15 @@ export function toggleLayer() {
     button.classList.toggle('unavailable', !toolWorksOn(button.dataset.tool, ui.layer));
   }
   if (!toolWorksOn(ui.tool, ui.layer)) setTool('hand');
+  showGroups();
 }
 
 export function setTool(id) {
+  if (!toolUnlocked(id)) {
+    playSound('deny');
+    openResearch(id);
+    return;
+  }
   if (!toolWorksOn(id, ui.layer)) {
     playSound('deny');
     return;
@@ -164,15 +332,19 @@ export function setTool(id) {
     if (id !== 'select') clearSelection();
   }
   ui.tool = id;
+  const group = groupOf(id);
+  if (group) lastInGroup[group.id] = id;
   for (const button of document.querySelectorAll('.tool[data-tool]')) {
     button.setAttribute('aria-pressed', String(button.dataset.tool === id));
   }
+  showGroups();
   gameCanvas.classList.toggle('build', id !== 'hand');
 }
 
 let shownCount = -1;
-/** À chaque image : le nombre de tapis en stock sur le bouton Tapis. */
+/** À chaque image : le stock de tapis sur le bouton Tapis, et Tourner seulement quand il sert. */
 export function updateToolCounts() {
+  document.getElementById('tool-rotate').classList.toggle('idle', !(ui.placing || isBuildTool(ui.tool)));
   const n = stockOf('belt');
   if (n === shownCount) return;
   shownCount = n;
@@ -181,13 +353,28 @@ export function updateToolCounts() {
   badge.classList.toggle('empty', n === 0);
 }
 
-/** Les outils qui ont un numéro (ceux qui n'ont pas leur propre lettre). */
-const NUMBERED = TOOLS.filter((tool) => !tool.key);
-
-/** Touches 1 à 9, puis 0 pour le 10e outil. Au sous-sol, seuls ceux qui y servent. */
+/**
+ * Chiffres : 1 à 4 les boutons simples ; 5 à 7 une famille. Une famille prend d'abord
+ * son dernier outil ; rappuyer passe au suivant (en sautant ceux qu'on ne peut pas
+ * utiliser), et son plateau s'affiche un instant pour montrer où on en est.
+ */
 export function selectToolByNumber(n) {
-  const tool = NUMBERED[(n + 9) % 10];
-  if (tool && toolWorksOn(tool.id, ui.layer)) setTool(tool.id);
+  const key = String(n);
+  const slot = SLOTS.find((s) => s.key === key);
+  if (slot) return setTool(slot.id);
+  const group = GROUPS.find((g) => g.key === key);
+  if (!group) return;
+  const choices = group.tools.filter(usable);
+  if (!choices.length) {
+    playSound('deny');
+    return showTray(group.id, { briefly: true });
+  }
+  const current = group.tools.includes(ui.tool) ? choices.indexOf(ui.tool) : -1;
+  const next = current < 0
+    ? (choices.includes(lastInGroup[group.id]) ? lastInGroup[group.id] : choices[0])
+    : choices[(current + 1) % choices.length];
+  setTool(next);
+  showTray(group.id, { briefly: true });
 }
 
 /** Choisit un outil par sa lettre (ex. T pour Tunnel). Retourne vrai s'il y en a un. */

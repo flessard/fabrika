@@ -18,6 +18,12 @@
   color-scheme: dark;
 }
 
+/* Taille de l'interface (menu Échap, voir src/ui/uiScale.js) : les panneaux, pas la carte.
+   Une largeur relative à l'écran (100vw) se divise par --ui-scale : sinon le zoom l'agrandit aussi. */
+#hud, #miniWrap, #bar, #hint, #toast, #levelCard, #selMenu, #infoPanel, #chipTooltip, .pause-card, .title-card {
+  zoom: var(--ui-scale, 1);
+}
+
 /* L'attribut hidden doit toujours cacher, même un élément en display: grid ou flex. */
 [hidden] { display: none !important; }
 
@@ -78,7 +84,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   position: fixed;
   top: calc(env(safe-area-inset-top, 0px) + 12px);
   left: 12px;
-  width: min(300px, calc(100vw - 170px));
+  width: min(300px, calc((100vw - 170px) / var(--ui-scale, 1)));
   padding: 10px 12px 12px;
   display: grid;
   gap: 8px;
@@ -141,8 +147,27 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .ip-toggle { justify-self: start; }
 .ip-toggle[aria-pressed="true"] { border-color: var(--ok); color: var(--ok); }
 
+/* Recettes d'une machine : chacune à allumer ou éteindre */
+.ip-recipes { display: grid; gap: 4px; }
+.ip-recipe {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  justify-self: stretch;
+  padding: 3px 6px;
+  background: var(--void);
+  box-shadow: inset 0 0 0 2px var(--panel-hi);
+  border-color: transparent;
+  opacity: .5;
+}
+.ip-recipe:hover { opacity: .85; background: var(--panel-hi); }
+.ip-recipe[aria-pressed="true"] { opacity: 1; border-color: var(--ok); background: var(--panel-hi); }
+
 /* Bouton « Prendre » de la fiche d'une machine */
 .ip-take { justify-self: start; margin-top: 4px; }
+.ip-refused { font-size: 12px; line-height: 1.45; color: var(--ink); padding: 5px 7px; background: var(--void); box-shadow: inset 2px 0 0 var(--bad); }
+.ip-refused b { color: var(--bad); }
+.ip-clear { margin-left: auto; padding: 1px 6px; }
 
 /* Carte de niveau : la commande à livrer, en grand */
 #levelCard {
@@ -151,7 +176,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   left: 50%;
   transform: translateX(-50%);
   z-index: 15;
-  width: min(340px, calc(100vw - 32px));
+  width: min(340px, calc((100vw - 32px) / var(--ui-scale, 1)));
   padding: 16px 18px 14px;
   display: grid;
   gap: 10px;
@@ -267,29 +292,65 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   display: flex;
   gap: 4px;
   padding: 6px;
-  max-width: calc(100vw - 24px);
-  overflow-x: auto;
+  max-width: calc((100vw - 24px) / var(--ui-scale, 1)); /* panneau agrandi : sa largeur aussi */
 }
 .tool {
   position: relative;
   display: grid;
   justify-items: center;
   gap: 2px;
-  width: 58px;
+  width: 64px;
   padding: 6px 2px 4px;
   background: var(--panel);
   box-shadow: none;
   border: 2px solid transparent;
 }
-.tool canvas { width: 32px; height: 32px; image-rendering: pixelated; }
+.tool img { width: 32px; height: 32px; image-rendering: pixelated; }
 .tool span { font-size: 11px; white-space: nowrap; }
 .tool kbd { position: absolute; top: 2px; left: 4px; font-family: var(--ui); font-size: 10px; color: var(--mute); }
 .tool:hover { background: var(--panel-hi); }
 .tool[aria-pressed="true"] { border-color: var(--accent); background: var(--panel-hi); }
+.tool.idle { visibility: hidden; }
 /* Au sous-sol, les outils qui n'y servent pas sont estompés. */
 .tool.unavailable { opacity: .3; }
 #tool-layer[aria-pressed="true"] { border-color: #2ce8f5; }
 .sep { width: 2px; background: var(--panel-hi); margin: 4px 2px; flex: none; }
+
+/* Famille de bâtiments : un bouton (son dernier outil) et un plateau qui s'ouvre au-dessus */
+.tool-group { position: relative; display: flex; }
+.group-btn { width: 76px; }
+.group-caret {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 0;
+  height: 0;
+  border: 4px solid transparent;
+  border-bottom-color: var(--mute);
+  border-top-width: 0;
+}
+.tool-group.open .group-caret { border-bottom-color: var(--accent); }
+.tool-group.open .group-btn { background: var(--panel-hi); }
+.tray {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  z-index: 2;
+}
+.tray[hidden] { display: none; }
+/* Petite pointe sous le plateau, vers le bouton de la famille */
+.tray::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: calc(50% - 6px);
+  border: 6px solid transparent;
+  border-top-color: var(--panel-hi);
+}
 
 /* ---------- Bulles ---------- */
 
@@ -301,7 +362,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   padding: 6px 10px;
   font-size: 13px;
   white-space: nowrap;
-  max-width: calc(100vw - 24px);
+  max-width: calc((100vw - 24px) / var(--ui-scale, 1)); /* panneau agrandi : sa largeur aussi */
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -394,6 +455,113 @@ body.paused :is(#hint, #selMenu, #levelCard, #chipTooltip, #infoPanel) { display
 #hudOnline b { color: var(--accent); letter-spacing: .1em; margin-right: 2px; }
 #hudOnline .mp-player { width: 13px; height: 13px; font-size: 9px; }
 #hudOnline .mp-player.you { outline-width: 1px; }
+
+/* ---------- Arbre de recherche ---------- */
+
+#researchButton { position: relative; padding: 1px 6px; font-size: 11px; }
+#researchBadge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 2px;
+  font-size: 9px;
+  font-style: normal;
+  line-height: 13px;
+  text-align: center;
+  color: var(--void);
+  background: var(--accent);
+  box-shadow: 0 0 0 1px var(--void);
+  animation: rs-pulse 1.2s steps(2) infinite;
+}
+@keyframes rs-pulse { 50% { background: var(--ok); } }
+
+/* Outil pas encore débloqué : grisé, avec un cadenas */
+.tool.locked img { filter: grayscale(1) brightness(.45); }
+.tool.locked .tool-name { color: var(--mute); }
+.tool.locked::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  top: 18px;
+  width: 18px;
+  height: 20px;
+  background: var(--lock-icon) center / contain no-repeat;
+  image-rendering: pixelated;
+}
+
+#research {
+  position: fixed;
+  inset: 0;
+  z-index: 17;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(24, 20, 37, .55);
+}
+.rs-card {
+  zoom: var(--ui-scale, 1);
+  display: grid;
+  gap: 10px;
+  width: min(640px, calc((100vw - 32px) / var(--ui-scale, 1)));
+  max-height: calc((100vh - 32px) / var(--ui-scale, 1));
+  overflow: auto;
+  padding: 16px 18px;
+  box-shadow: inset 0 0 0 2px var(--panel-hi), 0 6px 0 var(--void), 0 0 0 4px rgba(254, 174, 52, .15);
+}
+.rs-close { padding: 0 7px; font-size: 14px; }
+.rs-intro { margin: 0; font-size: 12px; line-height: 1.5; color: var(--mute); }
+.rs-bank { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 12px; padding: 6px 8px; background: var(--void); }
+
+.rs-tree {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  grid-auto-rows: minmax(58px, auto);
+  gap: 10px 34px;
+  padding: 4px 0;
+}
+.rs-links { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
+.rs-links path { fill: none; stroke: var(--panel-hi); stroke-width: 2; stroke-dasharray: 4 3; }
+.rs-links path.lit { stroke: var(--mute); stroke-dasharray: none; }
+.rs-links path.done { stroke: var(--ok); }
+
+.rs-node {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  text-align: left;
+  background: var(--void);
+  border-color: transparent;
+  box-shadow: inset 0 0 0 2px var(--panel-hi);
+}
+.rs-icon { width: 32px; height: 32px; image-rendering: pixelated; flex: none; }
+.rs-text { display: grid; gap: 3px; min-width: 0; }
+.rs-text b { font-size: 13px; }
+.rs-detail { display: flex; flex-wrap: wrap; gap: 3px 8px; font-size: 11px; }
+.rs-state { color: var(--mute); }
+.rs-cost { display: inline-flex; align-items: center; gap: 3px; color: var(--bad, #e43b44); }
+.rs-cost.ok, .rs-bank .rs-cost { color: var(--ink); }
+.rs-cost img { width: 14px; height: 14px; image-rendering: pixelated; }
+.rs-go { font-size: 11px; color: var(--accent); }
+
+.rs-node.done { box-shadow: inset 0 0 0 2px var(--ok); }
+.rs-node.done .rs-state { color: var(--ok); }
+.rs-node.blocked { opacity: .5; }
+.rs-node.blocked .rs-icon { filter: grayscale(1); }
+.rs-node.waiting .rs-icon { filter: grayscale(.7) brightness(.8); }
+.rs-node.ready { box-shadow: inset 0 0 0 2px var(--accent), 0 0 0 2px rgba(254, 174, 52, .25); }
+.rs-node.ready:hover { background: var(--panel-hi); }
+.rs-node.focus { outline: 2px dashed var(--accent); outline-offset: 3px; }
+.rs-node.shake { animation: rs-shake .3s steps(6); }
+@keyframes rs-shake { 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
+
+@media (max-width: 560px) {
+  .rs-tree { grid-template-columns: repeat(3, 150px); }
+}
 
 /* ---------- Écran titre ---------- */
 
@@ -494,10 +662,11 @@ body.title #levelCard { display: none !important; }
 /* ---------- Petit écran ---------- */
 
 @media (max-width: 640px) {
-  #hud { width: calc(100vw - 150px); padding: 8px; }
+  #hud { width: calc((100vw - 150px) / var(--ui-scale, 1)); padding: 8px; }
   .help { display: none; }
   #mini { width: 96px; height: 72px; }
-  .tool { width: 52px; }
+  .tool { width: 54px; }
+  .group-btn { width: 64px; }
   .tool span { font-size: 10px; }
 }
 
@@ -536,6 +705,9 @@ body.title #levelCard { display: none !important; }
 .ip-status.ok { color: var(--ok); }
 .ip-status.warn { color: var(--accent); }
 .ip-status.idle { color: var(--mute); }
+.ip-status.off { color: var(--bad); }
+.ip-power { justify-self: start; }
+.ip-power.off { border-color: var(--ok); color: var(--ok); }
 .ip-close { padding: 0 7px; font-size: 16px; line-height: 20px; }
 
 .ip-sections { display: grid; gap: 8px; }

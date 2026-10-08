@@ -5,7 +5,7 @@
 //   splitter → répartiteur : 1 entrée, plusieurs sorties (sim/splitter.js)
 //   merger   → groupeur : plusieurs entrées, 1 sortie (sim/merger.js)
 //   drill    → produit du minerai sur un gisement (sim/machines.js)
-//   crafter  → transforme un item selon `recipes` (sim/machines.js)
+//   crafter  → transforme des items selon ses recettes actives (sim/machines.js)
 //   hub      → dépôt qui reçoit les livraisons (sim/machines.js)
 //   storage  → conteneur : garde des items dans ses emplacements (sim/storage.js)
 //
@@ -13,9 +13,10 @@
 //           inputLayer / outputLayer : la couche d'où arrivent ses items et celle où il
 //           les envoie (par défaut, sa seule couche). Le tunnel passe de l'une à l'autre.
 // time    : secondes pour fabriquer un item
-// recipes : item reçu → item fabriqué
-// assembly: recette à plusieurs ingrédients { inputs: { item: nombre }, output, count }
-//           (l'Assembleur) ; chaque ingrédient a sa propre réserve de storage.input
+// recipes : les recettes possibles [{ in: { item: nombre }, out, count? }] ; on choisit dans
+//           la fiche de chaque machine lesquelles sont actives (une seule par ingrédient,
+//           voir data/recipes.js). defaultRecipes : celles actives à la pose.
+//           Chaque ingrédient a sa propre réserve de storage.input.
 // cost    : ce que la pose coûte en objets de l'inventaire, ex. { belt: 1 } (rendu si on l'efface)
 // storage : nombre d'items que la machine garde en stock, à l'entrée et à la sortie.
 //           Quand la sortie est bloquée, la machine continue tant que son stock n'est pas plein.
@@ -42,17 +43,33 @@ export const BUILDINGS = {
   // Même famille encore, mais chaque sortie a sa liste d'items (réglée dans sa fiche).
   filter:   { kind: 'splitter', w: 1, h: 1, filter: true },
   merger:   { kind: 'merger',   w: 1, h: 1 },
-  drill:    { kind: 'drill',    w: 2, h: 2, time: 1.6, storage: { output: 10 } },
+  // residue : un résidu tous les `every` minerais, qui sort avec le minerai, sur le même tapis.
+  drill:    { kind: 'drill',    w: 2, h: 2, time: 1.6, storage: { output: 10 }, residue: { item: 'rubble', every: 3 } },
   furnace:  { kind: 'crafter',  w: 2, h: 2, time: 1.3, storage: { input: 10, output: 10 },
-              recipes: { fe_ore: 'fe_ingot', cu_ore: 'cu_ingot' } },
+              recipes: [
+                { in: { fe_ore: 1 }, out: 'fe_ingot' },
+                { in: { cu_ore: 1 }, out: 'cu_ingot' },
+              ],
+              defaultRecipes: [0, 1] },
   press:    { kind: 'crafter',  w: 2, h: 2, time: 1.1, storage: { input: 10, output: 10 },
-              recipes: { fe_ingot: 'fe_plate', cu_ingot: 'cu_wire' } },
-  // Fabrique les objets de construction : 1 plaque de fer + 1 fil de cuivre → 2 tapis.
+              recipes: [
+                { in: { fe_ingot: 1 }, out: 'fe_plate' },
+                { in: { fe_ingot: 1 }, out: 'fe_gear' },   // au choix avec la plaque
+                { in: { cu_ingot: 1 }, out: 'cu_wire' },
+              ],
+              defaultRecipes: [0, 2] },
+  // Fabrique les objets de construction (des recettes à plusieurs ingrédients).
   assembler: { kind: 'crafter', w: 2, h: 2, time: 2, storage: { input: 10, output: 20 },
-               assembly: { inputs: { fe_plate: 1, cu_wire: 1 }, output: 'belt', count: 2 } },
+               recipes: [
+                 { in: { fe_plate: 1, cu_wire: 1 }, out: 'belt', count: 2 },
+                 { in: { fe_gear: 1, cu_wire: 1 }, out: 'belt', count: 3 }, // au choix, plus rentable
+               ],
+               defaultRecipes: [0] },
   hub:      { kind: 'hub',      w: 3, h: 3 },
   // Garde des items : 6 emplacements, chacun d'une seule sorte jusqu'à la taille de son paquet.
   container: { kind: 'storage', w: 2, h: 2, slots: 6 },
+  // Décharge : détruit tout ce qu'elle reçoit, par n'importe quel côté.
+  dump:     { kind: 'dump',     w: 1, h: 1 },
 };
 
 /** Ce que posent les outils au sous-sol, à la place de leur bâtiment de surface. */
@@ -68,10 +85,15 @@ for (const type of ['splitter', 'smartSplitter', 'filter', 'merger']) {
 BUILDINGS.underBelt.base = 'belt';
 
 /**
- * Taille des stocks d'une machine (0 si elle n'en a pas). Pour l'Assembleur, l'entrée
- * compte une réserve par ingrédient.
+ * Taille des stocks d'une machine (0 si elle n'en a pas). L'entrée compte une réserve
+ * par ingrédient de ses recettes actives.
  */
-export const inputCapacity = (b) => (BUILDINGS[b.type].storage?.input ?? 0) * Object.keys(BUILDINGS[b.type].assembly?.inputs ?? { one: 1 }).length;
+export const inputCapacity = (b) => {
+  const perItem = BUILDINGS[b.type].storage?.input ?? 0;
+  const ingredients = new Set((b.recipes ?? BUILDINGS[b.type].defaultRecipes ?? [])
+    .flatMap((i) => Object.keys(BUILDINGS[b.type].recipes?.[i]?.in ?? {})));
+  return perItem * Math.max(1, ingredients.size);
+};
 export const outputCapacity = (b) => BUILDINGS[b.type].storage?.output ?? 0;
 
 /** Type de bâtiment de surface dont un bâtiment souterrain est la copie (sinon, lui-même). */
@@ -88,12 +110,17 @@ export const outputLayer = (b) => BUILDINGS[b.type].outputLayer ?? layersOf(b.ty
 /** Entrée ou sortie de tunnel. */
 export const isTunnel = (b) => !!BUILDINGS[b.type].tunnel;
 
+/** Les machines qu'on peut mettre en marche ou arrêter (foreuse, four, presse, assembleur). */
+export const canBePowered = (b) => b.kind === 'drill' || b.kind === 'crafter';
+/** Une machine est en marche, sauf si on l'a arrêtée (enabled = false). */
+export const isOn = (b) => b.enabled !== false;
+
 /** Les bâtiments qu'on peut ouvrir d'un clic pour voir leur fiche (tout sauf le dépôt). */
 export const hasInfoPanel = (b) => b.kind !== 'hub';
 
 /**
- * Outils de la palette, dans l'ordre des touches 1, 2, 3… (le 10e prend la touche 0).
- * Un outil avec `key` a sa propre lettre et ne prend pas de numéro.
+ * Outils de la palette. `key` : sa lettre (ex. T pour Tunnel). Les chiffres et le
+ * rangement en familles sont dans ui/toolbar.js.
  * `under` : l'outil sert aussi au sous-sol (les autres ne servent qu'en surface).
  */
 export const TOOLS = [
@@ -109,7 +136,8 @@ export const TOOLS = [
   { id: 'press' },
   { id: 'assembler', key: 'E' },
   { id: 'container', key: 'B' },
-  { id: 'erase', separatorBefore: true, under: true },
+  { id: 'dump', key: 'G' },
+  { id: 'erase', under: true },
   { id: 'select', under: true },
 ];
 

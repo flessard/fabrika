@@ -11,6 +11,7 @@ import { restoreBuilding } from './buildings.js';
 import { prepareMap } from './map.js';
 import { restoreFog, serializeFog } from './fog.js';
 import { START_INVENTORY } from './inventory.js';
+import { ALL_UNLOCKED } from '../data/research.js';
 
 /** Version 2 : carte de 128 × 96 et brouillard. Les sauvegardes plus anciennes sont ignorées. */
 const VERSION = 2;
@@ -27,6 +28,8 @@ export function serializeGame() {
     level: game.level,
     levelDelivered: { ...game.levelDelivered },
     inventory: { ...game.inventory },
+    unlocked: [...game.unlocked],
+    credits: { ...game.credits },
     explored: serializeFog(),
     // Où regardait la caméra : on y revient au chargement.
     camera: { x: view.camX + view.width / 2, y: view.camY + view.height / 2 },
@@ -44,6 +47,8 @@ export function loadGame(save) {
   game.level = save.level ?? 0;
   game.levelDelivered = { ...save.levelDelivered };
   game.inventory = { ...(save.inventory ?? START_INVENTORY) }; // sauvegarde d'avant l'inventaire
+  game.unlocked = [...(save.unlocked ?? ALL_UNLOCKED)]; // sauvegarde d'avant l'arbre : tout est débloqué
+  game.credits = { ...save.credits };
   for (const saved of save.buildings) restoreBuilding({ ...structuredClone(saved), flow: [], stalled: false });
   restoreFog(save.explored);
   game.spawn = { ...save.camera };

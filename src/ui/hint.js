@@ -2,8 +2,8 @@
 // formes possibles du splitter qu'on s'apprête à poser, et surtout, quand une pose
 // est impossible, la raison (en rouge) : eau, arbre, case déjà occupée…
 import { on } from '../core/events.js';
-import { BUILDINGS, isBuildTool, outputCapacity } from '../data/buildings.js';
-import { buildingName, decimal, itemName, t, tn, toolName } from '../i18n/index.js';
+import { BUILDINGS, isBuildTool, isOn, outputCapacity } from '../data/buildings.js';
+import { buildingName, decimal, itemName, itemPlural, t, tn, toolName } from '../i18n/index.js';
 import { ui } from '../state.js';
 import { anchorFor, buildingAt, placementProblem } from '../world/buildings.js';
 import { hasShapes, shapeChoice, shapeName } from '../input/shapePicker.js';
@@ -11,6 +11,9 @@ import { placementAt, placementProblems } from '../input/selection.js';
 import { toolType } from '../input/actions.js';
 import { affordable, stockProblem } from '../world/inventory.js';
 import { mergeProblem } from '../sim/belt.js';
+import { activeRecipes, ingredientsOf, yieldOf } from '../data/recipes.js';
+import { ITEMS } from '../data/items.js';
+import { refusal } from '../render/scene.js';
 
 const hintEl = document.getElementById('hint');
 let shown = '';
@@ -50,7 +53,11 @@ function hintText() {
   if (ui.tool === 'tunnel') return tunnelHint();
   if (ui.layer === 'under') return undergroundHint();
   if (!ui.hover) return '';
-  if (ui.tool === 'hand') return machineHint(buildingAt(ui.hover.x, ui.hover.y));
+  if (ui.tool === 'hand') {
+    const hovered = buildingAt(ui.hover.x, ui.hover.y);
+    const refused = hovered && refusal(hovered);
+    return refused ? warning(refusalText(refused)) : machineHint(hovered);
+  }
   if (hasShapes(ui.tool)) {
     const choice = shapeChoice(ui.tool, ui.hover);
     const type = toolType();
@@ -61,8 +68,20 @@ function hintText() {
   return '';
 }
 
+/**
+ * Pourquoi une machine refuse l'item d'un convoyeur, et quoi faire. Ex. « Four ne prend
+ * pas les résidus : triez-les avec un filtre (I) vers une décharge (G) ».
+ */
+export function refusalText({ item, target }) {
+  const params = { machine: buildingName(target.type), item: itemName(item), items: itemPlural(item) };
+  if (ITEMS[item]?.waste) return t('refused.waste', params);
+  if (target.kind === 'crafter') return t('refused.recipe', params);
+  return t('refused.other', params);
+}
+
 /** Ex. « Four · 1,3 s par item · Minerai de fer → Lingot de fer · 62 % » (selon la langue). */
 function machineHint(b) {
+  if (b?.kind === 'dump') return t('hint.dump', { name: buildingName(b.type), n: b.destroyed });
   if (b?.kind === 'storage') {
     return t('hint.storage', { name: buildingName(b.type), n: b.slots.filter(Boolean).length, total: b.slots.length });
   }
@@ -70,12 +89,12 @@ function machineHint(b) {
   if (!def?.time) return '';
 
   const makes = b.kind === 'drill' ? itemName(b.ore)
-    : def.assembly ? assemblyText(def.assembly)
-    : Object.entries(def.recipes).map(([from, to]) => `${itemName(from)} → ${itemName(to)}`).join(' · ');
+    : activeRecipes(b).map(({ recipe }) => recipeText(recipe)).join(' · ') || t('panel.recipes.none');
 
   const busy = b.kind === 'drill' ? b.working : !!b.current;
   let state = t('hint.machine.waiting');
-  if (busy) state = `${Math.floor(b.progress * 100)} %`;
+  if (!isOn(b)) state = t('hint.machine.off');
+  else if (busy) state = `${Math.floor(b.progress * 100)} %`;
   else if (b.outputs.length >= outputCapacity(b)) state = t('hint.machine.blocked');
 
   return t('hint.machine', { name: buildingName(b.type), s: decimal(def.time), makes, state });
@@ -84,9 +103,9 @@ function machineHint(b) {
 /** Un bâtiment tel qu'il serait posé (pour vérifier les jonctions). */
 const virtualOf = (type, x, y, dir, props = {}) => ({ type, kind: BUILDINGS[type].kind, x, y, w: BUILDINGS[type].w, h: BUILDINGS[type].h, dir, ...props });
 
-/** Ex. « Plaque de fer + Fil de cuivre → 2 Tapis » */
-const assemblyText = ({ inputs, output, count }) =>
-  `${Object.keys(inputs).map(itemName).join(' + ')} → ${count} ${itemName(output)}`;
+/** Ex. « Plaque de fer + Fil de cuivre → 2 Tapis », « Lingot de fer → Plaque de fer » */
+const recipeText = (recipe) =>
+  `${ingredientsOf(recipe).map(itemName).join(' + ')} → ${yieldOf(recipe) > 1 ? `${yieldOf(recipe)} ` : ''}${itemName(recipe.out)}`;
 
 function placingHint({ mode, parts }) {
   const what = tn('selection.count', parts.length);

@@ -10,6 +10,7 @@ import { on } from '../core/events.js';
 import { ui } from '../state.js';
 import { playSound } from '../audio/sounds.js';
 import { closeLevelCard } from './levelCard.js';
+import { closeResearch } from './research.js';
 import { openTitle } from './title.js';
 
 const $ = (id) => document.getElementById(id);
@@ -44,6 +45,7 @@ export function openPause(event = null) {
   openingEvent = event;
   playSound('click');
   closeLevelCard();
+  closeResearch();
   ui.screen = 'pause';
   ui.hover = null;
   document.body.classList.add('paused');

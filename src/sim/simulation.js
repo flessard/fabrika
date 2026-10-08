@@ -3,7 +3,7 @@
 import { game } from '../state.js';
 import { stepBelt } from './belt.js';
 import { stepSplitter } from './splitter.js';
-import { stepCrafter, stepDrill, stepHub } from './machines.js';
+import { stepCrafter, stepDrill, stepDump, stepHub } from './machines.js';
 import { updateParticles } from './particles.js';
 import { applyDueCommands } from './commands.js';
 import { stepStorage } from './storage.js';
@@ -16,6 +16,7 @@ const STEP_BY_KIND = {
   crafter: stepCrafter,
   hub: stepHub,
   storage: stepStorage,
+  dump: stepDump,
 };
 
 export function stepSimulation(dt) {

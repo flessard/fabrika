@@ -26,6 +26,10 @@ export const game = {
   delivered: {},
   /** Inventaire de l'équipe : objets de construction en stock (voir world/inventory.js). */
   inventory: {},
+  /** Outils débloqués dans l'arbre de recherche (voir data/research.js). */
+  unlocked: [],
+  /** Items livrés au dépôt pas encore dépensés en recherche, par type d'item. */
+  credits: {},
   /** Niveau en cours (0 = le premier ; voir data/levels.js et sim/levels.js). */
   level: 0,
   /** Ce qui a été livré pour la commande du niveau en cours, par type d'item. */

@@ -3,6 +3,7 @@
 //
 // Événements utilisés :
 //   'map:new'         une nouvelle carte vient d'être générée
+//   'research:done'   un outil vient d'être débloqué (payload : { id })
 //   'item:delivered'  un item est arrivé au dépôt (payload : { itemType, x, y })
 //   'press:hit'       le piston d'une presse frappe (payload : { x, y } en pixels)
 

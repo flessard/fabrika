@@ -6,7 +6,7 @@
 // ce joueur (outil, direction du prochain bâtiment, forme choisie) reste ici, dans ui.
 import { emit } from '../core/events.js';
 import { DIRS, LEFT, RIGHT, DOWN, UP, turnLeft, turnRight } from '../core/grid.js';
-import { BUILDINGS, baseType, toolWorksOn, typeForTool } from '../data/buildings.js';
+import { BUILDINGS, baseType, canBePowered, isOn, toolWorksOn, typeForTool } from '../data/buildings.js';
 import { ui } from '../state.js';
 import { rotatePriority } from '../data/splitterShapes.js';
 import { anchorFor, buildingAt, canPlace } from '../world/buildings.js';
@@ -149,6 +149,13 @@ export function shapeAction() {
   playSound('click');
   if (ui.tool === 'tunnel') toggleTunnelEnd();
   else if (hasShapes(ui.tool)) cycleShape(ui.tool);
+}
+
+/** O : met en marche ou arrête la machine survolée (avec l'outil Déplacer). */
+export function powerAction() {
+  const hovered = ui.hover && buildingAt(ui.hover.x, ui.hover.y, ui.layer);
+  if (ui.tool !== 'hand' || !hovered || !canBePowered(hovered)) return;
+  issue({ type: 'setEnabled', ids: [hovered.id], enabled: !isOn(hovered) });
 }
 
 /**

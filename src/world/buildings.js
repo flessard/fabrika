@@ -96,13 +96,18 @@ function createBuilding(type, x, y, dir, id = game.nextId++) {
       b.next = 0;             // index de la prochaine sortie dans la rotation
       break;
     case 'drill':
+      b.enabled = true;       // en marche (la touche O ou sa fiche l'arrêtent)
       b.ore = majorityOre(x, y, def.w, def.h);
+      b.dug = 0;              // minerais extraits (un résidu tous les `residue.every`)
       b.outputs = [];
       b.progress = 0;
       b.working = false;
       b.anim = 0;
       break;
     case 'crafter':
+      b.enabled = true;
+      b.recipes = [...(def.defaultRecipes ?? [])]; // recettes actives (choisies dans sa fiche)
+      b.currentCount = 1;     // combien d'items donne la recette en cours
       b.inputs = [];
       b.outputs = [];
       b.current = null;       // item en fabrication
@@ -114,6 +119,10 @@ function createBuilding(type, x, y, dir, id = game.nextId++) {
     case 'hub':
       b.flash = 0;
       b.anim = 0;
+      break;
+    case 'dump':
+      b.destroyed = 0;        // items jetés depuis la pose
+      b.flash = 0;
       break;
     case 'storage':
       b.slots = Array(def.slots).fill(null); // chaque emplacement : { item, count } ou null
@@ -152,7 +161,7 @@ export function liftBuilding(b) {
  * venait d'être posé. Il garde sa place, sa direction, sa forme, ses priorités et ses filtres.
  */
 export function emptyBuilding(b) {
-  const keep = { shape: b.shape, priority: b.priority, filters: b.filters, outputOpen: b.outputOpen };
+  const keep = { shape: b.shape, priority: b.priority, filters: b.filters, outputOpen: b.outputOpen, enabled: b.enabled, recipes: b.recipes };
   Object.assign(b, createBuilding(b.type, b.x, b.y, b.dir, b.id));
   for (const [name, value] of Object.entries(keep)) if (value !== undefined) b[name] = value;
   b.stalled = false;

@@ -19,6 +19,18 @@ function hazardStripes(x0, y0, w, h) {
 }
 
 const STATIC_SPRITES = {
+  // Décharge : une fosse sombre sous une grille, bordée de rayures.
+  dump: () => makeCanvas(16, 16, () => {
+    rect(0, 0, 16, 16, P.black);
+    rect(1, 1, 14, 14, P.steel);
+    rect(1, 1, 14, 1, P.silver);
+    hazardStripes(1, 12, 14, 3);
+    rect(3, 3, 10, 8, P.black);
+    rect(4, 4, 8, 6, P.night);
+    for (const [x, y] of [[5, 8], [8, 7], [10, 8], [6, 6]]) rect(x, y, 2, 1, P.bark);
+    for (let x = 4; x < 12; x += 2) rect(x, 4, 1, 6, P.slate);
+    rect(1, 15, 14, 1, P.soot);
+  }),
   drill: () => makeCanvas(32, 32, () => {
     rect(0, 0, 32, 32, P.black);
     // Toit jaune avec le puits de forage
@@ -325,12 +337,25 @@ export function drawMachineBody(b, state, sx, sy, { shadow = true } = {}) {
   if (shadow) withAlpha(0.35, () => rect(sx + 3, sy + 4, b.w * TILE, b.h * TILE, P.black));
   currentCtx().drawImage(machineSprite(b.type), sx, sy);
   ANIMATE[b.type]?.(state, sx, sy);
-  if (b.kind !== 'hub' && !(b.kind === 'storage' && !state.open)) drawOutputChute(b, sx, sy);
+  if (b.kind !== 'hub' && b.kind !== 'dump' && !(b.kind === 'storage' && !state.open)) drawOutputChute(b, sx, sy);
+}
+
+/** Voyant rouge d'une machine arrêtée, dans son coin haut-droit. */
+export function drawOffLight(b, sx, sy) {
+  const x = sx + b.w * TILE - 8, y = sy + 1;
+  rect(x, y, 7, 7, P.black);
+  rect(x + 1, y + 1, 5, 5, P.red);
+  rect(x + 2, y + 3, 3, 1, P.white);
 }
 
 /** Dessine une machine complète à l'écran en (sx, sy). `ghost` = aperçu avant de poser. */
 export function drawMachine(b, sx, sy, time, { ghost = false } = {}) {
   drawMachineBody(b, animationState(b, time), sx, sy, { shadow: !ghost });
+  // Arrêtée : assombrie, avec un voyant rouge.
+  if (!ghost && (b.kind === 'drill' || b.kind === 'crafter') && b.enabled === false) {
+    withAlpha(0.4, () => rect(sx, sy, b.w * TILE, b.h * TILE, P.black));
+    drawOffLight(b, sx, sy);
+  }
   if (b.kind === 'hub') drawHubFlash(b, sx, sy);
-  else if (!ghost && b.kind !== 'storage') drawProgressBar(b, sx, sy, time);
+  else if (!ghost && b.outputs) drawProgressBar(b, sx, sy, time);
 }

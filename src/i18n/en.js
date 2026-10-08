@@ -12,6 +12,7 @@ export default {
   'pause.title': 'Menu',
   'pause.resume': 'Resume',
   'pause.sound': 'Sound',
+  'pause.uiScale': 'Interface size',
   'pause.help': 'Help',
   'pause.toTitle': 'Main menu',
   'title.tagline': 'A pixel-art factory, solo or with friends',
@@ -72,13 +73,17 @@ export default {
   'hud.help':
     '<ul class="help-list">'
     + '<li><b>Move around</b> drag the map · <kbd>WASD</kbd> / arrows · <kbd>+</kbd> <kbd>−</kbd> or wheel: zoom</li>'
-    + '<li><b>Build</b> <kbd>1</kbd>…<kbd>9</kbd> tools · <kbd>R</kbd> rotate · <kbd>F</kbd> shape · <kbd>P</kbd> priorities</li>'
+    + '<li><b>Tools</b> <kbd>1</kbd> Move · <kbd>2</kbd> Select · <kbd>3</kbd> Eraser · <kbd>4</kbd> Belt</li>'
+    + '<li><b>Families</b> <kbd>5</kbd> Logistics · <kbd>6</kbd> Production · <kbd>7</kbd> Storage: press again for the next one</li>'
+    + '<li><b>Build</b> <kbd>R</kbd> rotate · <kbd>F</kbd> shape · <kbd>P</kbd> priorities</li>'
+    + '<li><b>Rubble</b> it comes out of drills with the ore: sort it with an <kbd>I</kbd> Filter into a <kbd>G</kbd> Dump</li>'
+    + '<li><b>Research</b> <kbd>K</kbd>: unlock buildings with items delivered to the depot</li>'
     + '<li><b>Belts</b> drag to draw a path · release to place</li>'
-    + '<li><b>Erase</b> right-click, or the Eraser (<kbd>9</kbd>)</li>'
-    + '<li><b>Select</b> <kbd>0</kbd> (or <kbd>Shift</kbd> + drag): <kbd>X</kbd> move · <kbd>C</kbd> copy · <kbd>Del</kbd> erase</li>'
+    + '<li><b>Erase</b> right-click, or the Eraser (<kbd>3</kbd>)</li>'
+    + '<li><b>Select</b> <kbd>2</kbd> (or <kbd>Shift</kbd> + drag): <kbd>X</kbd> move · <kbd>C</kbd> copy · <kbd>Del</kbd> erase</li>'
     + '<li><b>Underground</b> <kbd>T</kbd> tunnel (<kbd>F</kbd> entrance / exit) · <kbd>U</kbd> see underground</li>'
     + '<li><b>Filter</b> <kbd>I</kbd>, then pick each output\'s items in its panel</li>'
-    + '<li><b>Panel</b> click a building with Move (<kbd>1</kbd>)</li>'
+    + '<li><b>Panel</b> click a building with Move (<kbd>1</kbd>) · <kbd>O</kbd> turns a machine on or off</li>'
     + '<li><b>Game</b> <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>S</kbd> save · <kbd>M</kbd> sound · <kbd>Esc</kbd> cancel, then this menu</li>'
     + '</ul>',
   'hud.mapSize': '{w} × {h} tiles',
@@ -115,9 +120,14 @@ export default {
   'tool.press': 'Press',
   'tool.assembler': 'Assembler',
   'tool.container': 'Container',
+  'tool.dump': 'Dump',
   'tool.erase': 'Eraser',
   'tool.select': 'Select',
   'tool.rotate': 'Rotate',
+  'group.logistics': 'Logistics',
+  'group.production': 'Production',
+  'group.storage': 'Storage',
+  'toolbar.group.title': 'Click: see the buildings · key {key}: next one',
   'tool.layer': 'Under',
 
   // ---------- Buildings ----------
@@ -139,12 +149,15 @@ export default {
   'building.hub': 'Depot',
   'building.assembler': 'Assembler',
   'building.container': 'Container',
+  'building.dump': 'Dump',
 
   // ---------- Items ----------
   'item.fe_ore': 'Iron ore',
   'item.fe_ore.plural': 'iron ore',
   'item.cu_ore': 'Copper ore',
   'item.cu_ore.plural': 'copper ore',
+  'item.rubble': 'Rubble',
+  'item.rubble.plural': 'rubble',
   'item.coal': 'Coal',
   'item.coal.plural': 'coal',
   'item.fe_ingot': 'Iron ingot',
@@ -155,12 +168,15 @@ export default {
   'item.fe_plate.plural': 'iron plates',
   'item.belt': 'Belt',
   'item.belt.plural': 'belts',
+  'item.fe_gear': 'Gear',
+  'item.fe_gear.plural': 'gears',
   'item.cu_wire': 'Copper wire',
   'item.cu_wire.plural': 'copper wire',
   'family.ore': 'Ore',
   'family.ingot': 'Ingot',
   'family.product': 'Product',
   'family.part': 'Building part',
+  'family.waste': 'Waste (to the dump)',
 
   // ---------- Shapes and sides ----------
   'shape.T': 'T',
@@ -178,6 +194,26 @@ export default {
   // ---------- Why it can't be placed ----------
   'problem.offMap': 'off the map',
   'problem.fog': 'unexplored area',
+  'research.button': 'Research',
+  'research.open': 'Research tree (K)',
+  'research.title': 'Research',
+  'research.close': 'Close',
+  'research.intro': 'Unlock new buildings by spending items delivered to the depot. Every delivery counts, even outside the order.',
+  'research.bank': 'To spend:',
+  'research.bank.empty': 'nothing yet: deliver items to the depot',
+  'research.start': 'Available from the start',
+  'research.unlocked': 'Unlocked',
+  'research.requires': 'Requires: {names}',
+  'research.unlock': 'Unlock',
+  'research.ready': 'Research available: {name}',
+  'research.ready.detail': 'Open the research tree (K) to unlock it.',
+  'research.done': '{name} unlocked!',
+  'research.done.detail': 'It is now in the toolbar.',
+  'research.locked.title': 'Not unlocked yet: see the research tree (K)',
+  'research.problem.done': 'already unlocked',
+  'research.problem.requires': 'first unlock: {names}',
+  'research.problem.cost': '{n} more {item} needed',
+  'problem.locked': '{name} not unlocked yet (research tree, K)',
   'problem.noStock': 'no {item} left in stock',
   'problem.merge': 'two inputs on one belt: use a merger',
   'problem.taken': 'already taken ({name})',
@@ -192,10 +228,27 @@ export default {
   'panel.status.waiting': 'Waiting for input',
   'panel.status.running': 'Running',
   'panel.status.outputFull': 'Output full',
+  'panel.status.refused': 'Refused by: {machine}',
+  'panel.refused': 'Item refused',
+  'refused.waste': '<b>{machine}</b> does not take {items}: sort it out with a filter (I) into a dump (G).',
+  'refused.recipe': '<b>{machine}</b> has no active recipe for “{item}”: change its recipes, or sort with a filter (I).',
+  'refused.other': '<b>{machine}</b> does not take “{item}”.',
+  'panel.residue.aside': '1 rubble every {n} ores, to sort out',
+  'panel.dump.status': 'Destroys what it receives',
+  'panel.dump.destroyed': 'Items thrown away',
+  'panel.dump.aside': 'from any side',
   'panel.status.empty': 'Empty',
   'panel.status.blocked': 'Blocked',
   'panel.status.moving': 'Moving',
+  'panel.status.off': 'Stopped',
+  'panel.power': 'On / off',
+  'panel.power.aside': 'O key',
+  'panel.power.turnOff': 'Stop the machine',
+  'panel.power.turnOn': 'Start it again',
   'panel.recipes': 'Recipes: ',
+  'panel.recipes.none': 'no active recipe',
+  'panel.recipeChoice': 'Recipes',
+  'panel.recipeChoice.aside': 'one per ingredient',
   'panel.take': 'Take ({n})',
   'panel.take.title': 'Put what the machine made into the inventory',
   'hud.inventory': 'Inventory',
@@ -215,6 +268,9 @@ export default {
   'panel.stock': 'Stock',
   'panel.rate': 'Rate',
   'panel.carrying': 'Carrying',
+  'panel.clear': 'Remove',
+  'panel.clear.title': 'Remove this item (it is thrown away)',
+  'panel.clear.title.stock': 'Remove this item and put it back in the inventory',
   'panel.nothing': 'nothing',
   'panel.empty': 'empty',
   'panel.throughput': 'Throughput',
@@ -242,6 +298,7 @@ export default {
   'selection.move': 'Move',
   'selection.copy': 'Copy',
   'selection.erase': 'Erase',
+  'selection.power': 'On / off',
   'selection.deleteKey': 'Del',
   'selection.close': 'Deselect (Esc)',
 
@@ -250,6 +307,8 @@ export default {
   'hint.machine': '<b>{name}</b> · {s} s per item · {makes} · {state}',
   'hint.machine.waiting': 'waiting',
   'hint.machine.blocked': 'output blocked',
+  'hint.dump': '<b>{name}</b> · {n} items thrown away · accepts from every side',
+  'hint.machine.off': 'stopped (O to start it again)',
   'hint.place.move': '<b>Move</b> {what} · click to place',
   'hint.place.copy': '<b>Copy</b> {what} · click to place a copy',
   'hint.place.keys.move': '<b>R</b> rotate · <b>Esc</b> cancel',

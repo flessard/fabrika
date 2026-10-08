@@ -23,7 +23,14 @@
 //   toggleFilter { id, side, item }                 side relatif au flux : 'F', 'L' ou 'R'
 //   takeOutput   { id }                             met les objets de construction (tapis…) d'une machine
 //                                                   ou d'un conteneur dans l'inventaire
+//   research     { id }                             débloque un outil de l'arbre de recherche
+//                                                   (dépense des items livrés au dépôt)
+//   clearItem    { id }                             retire l'item d'un tapis, splitter ou groupeur
+//                                                   (un objet de construction retourne dans l'inventaire)
 //   setStorageOutput { id, open }                   ouvre ou ferme la sortie d'un conteneur
+//   setEnabled   { ids, enabled }                   met des machines en marche ou les arrête
+//   setRecipe    { id, index, on }                  allume ou éteint une recette d'une machine
+//                                                   (en allumer une éteint celles qui partagent un ingrédient)
 //
 // Les bâtiments qui ont un coût (data/buildings.js) le dépensent dans l'inventaire
 // à la pose, et le rendent quand on les efface (world/inventory.js).
@@ -33,15 +40,17 @@
 import { TILE } from '../config.js';
 import { emit } from '../core/events.js';
 import { turnRight } from '../core/grid.js';
-import { BUILDINGS, isTunnel, layersOf } from '../data/buildings.js';
+import { BUILDINGS, canBePowered, isTunnel, layersOf } from '../data/buildings.js';
 import { game } from '../state.js';
 import {
   buildingAt, buildingById, emptyBuilding, liftBuilding, placeBuilding, placementProblem, putBackBuilding, removeBuilding,
 } from '../world/buildings.js';
 import { spawnPuff } from './particles.js';
 import { mergeProblem } from './belt.js';
+import { activeRecipeIndices, withRecipe } from '../data/recipes.js';
 import { takeStockItems } from './storage.js';
 import { addToStock, isStockItem, refund, spend, stockProblem } from '../world/inventory.js';
+import { lockedProblem, researchProblem, unlock } from './research.js';
 
 /** Le joueur de ce poste : 0 en solo, son numéro (1 à 4) dans une partie à plusieurs. */
 let localPlayer = 0;
@@ -105,7 +114,7 @@ const HANDLERS = {
     const under = buildingAt(x, y, layersOf(type)[0]);
     const replaces = (def.kind === 'splitter' || def.kind === 'merger') && under?.kind === 'belt' && !isTunnel(under);
     const ignore = replaces ? new Set([under]) : null;
-    const problem = placementProblem(type, x, y, ignore) ?? stockProblem(type)
+    const problem = lockedProblem(type) ?? placementProblem(type, x, y, ignore) ?? stockProblem(type)
       ?? mergeProblem([virtualOf(type, x, y, dir, props)], ignore);
     if (problem) return fail(problem);
 
@@ -129,6 +138,7 @@ const HANDLERS = {
   },
 
   placeBelts({ building: type, cells }) {
+    if (lockedProblem(type)) return fail(lockedProblem(type));
     const placed = [];
     for (const { x, y, dir } of cells) {
       if (placementProblem(type, x, y) || stockProblem(type) || mergeProblem([virtualOf(type, x, y, dir)])) continue;
@@ -162,7 +172,7 @@ const HANDLERS = {
 
   placeGroup({ parts }) {
     for (const { building, x, y } of parts) {
-      const problem = placementProblem(building, x, y);
+      const problem = lockedProblem(building) ?? placementProblem(building, x, y);
       if (problem) return fail(problem);
     }
     // Une copie se paie d'un coup : il faut assez de stock pour tout le groupe.
@@ -232,6 +242,26 @@ const HANDLERS = {
     return { ok: true, result: b, at: center(b) };
   },
 
+  research({ id }) {
+    const problem = researchProblem(id);
+    if (problem) return fail(problem);
+    unlock(id);
+    emit('research:done', { id });
+    return { ok: true, result: id, at: null };
+  },
+
+  clearItem({ id }) {
+    const b = buildingById(id);
+    if (!b?.item) return fail();
+    const { type } = b.item;
+    b.item = null;
+    b.stalled = false;
+    if (isStockItem(type)) addToStock(type);
+    const at = center(b);
+    spawnPuff(at.x, at.y, 1);
+    return { ok: true, result: type, at };
+  },
+
   takeOutput({ id }) {
     const b = buildingById(id);
     if (!b) return fail();
@@ -244,6 +274,20 @@ const HANDLERS = {
     if (!taken.length) return fail();
     for (const item of taken) addToStock(item);
     return { ok: true, result: taken.length, at: center(b) };
+  },
+
+  setRecipe({ id, index, on }) {
+    const b = buildingById(id);
+    if (b?.kind !== 'crafter') return fail();
+    b.recipes = withRecipe(b.type, activeRecipeIndices(b), index, !!on);
+    return { ok: true, result: b, at: center(b) };
+  },
+
+  setEnabled({ ids, enabled }) {
+    const machines = ids.map(buildingById).filter((b) => b && canBePowered(b));
+    if (!machines.length) return fail();
+    for (const b of machines) b.enabled = !!enabled;
+    return { ok: true, result: machines, at: center(machines[0]) };
   },
 
   setStorageOutput({ id, open }) {

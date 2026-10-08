@@ -41,12 +41,102 @@ souterrain, en dépense un ; l'effacer le rend. Sans stock, la pose est refusée
 en stock ») et un tracé trop long montre en rouge les cases qui ne seront pas posées.
 
 L'**Assembleur** (touche `E`) fabrique des tapis : **1 plaque de fer + 1 fil de cuivre → 2 tapis**,
-en 2 s. C'est une recette à plusieurs ingrédients (`assembly` dans `data/buildings.js`), avec
-une réserve par ingrédient. Pour récupérer les tapis : le bouton **Prendre** de sa fiche, ou les
+en 2 s, ou **1 engrenage + 1 fil de cuivre → 3 tapis**. Ce sont des recettes à plusieurs
+ingrédients, avec une réserve par ingrédient. Pour récupérer les tapis : le bouton **Prendre** de sa fiche, ou les
 envoyer au dépôt par un tapis (un objet de construction livré va dans l'inventaire).
 
 Ce qui coûte quelque chose se règle avec `cost` dans `data/buildings.js` (pour l'instant, les
 tapis) ; l'inventaire est dans `src/world/inventory.js`, et fait partie de l'état de la partie.
+
+## Résidus et Décharge
+
+Chaque foreuse sort, en plus de son minerai, **1 résidu tous les 3 minerais**, **sur le
+même tapis** que le minerai. Personne n'en veut : ni le dépôt, ni les machines. Un
+résidu qui arrive devant un four ou le dépôt bloque donc la ligne. Il faut le trier avec
+un **Filtre** (touche `I`) qui l'envoie de côté, vers une **Décharge** (touche `G`,
+1 case), qui détruit tout ce qu'elle reçoit, par n'importe quel côté. Le filtre et la
+décharge sont disponibles dès le début.
+
+Quand un convoyeur bute sur une machine qui **refuse** son item (résidus devant un four ou
+le dépôt, item sans recette active), une **bulle rouge** clignote au-dessus de lui avec
+l'item barré, et une **croix rouge** marque le bord où il bute. Le survoler, ou ouvrir sa
+fiche, dit pourquoi et quoi faire. Une machine simplement pleine ne déclenche rien : ce
+n'est pas un refus. (`machineRefuses` dans `sim/machines.js`, `refusal` et
+`refusalMarks` dans `render/scene.js`, sprites dans `render/sprites/refusal.js`.)
+
+Réglages : `residue` sur la foreuse dans `data/buildings.js` (item, fréquence) ; l'item
+`rubble` (`waste: true`) dans `data/items.js`.
+
+## Palette d'outils
+
+La barre du bas ne montre que l'essentiel :
+
+| Touche | Bouton |
+|---|---|
+| `1` `2` `3` | Déplacer, Sélection, Gomme |
+| `4` | Tapis (avec le stock restant) |
+| `5` | **Logistique** : splitter, prioritaire, filtre, groupeur, tunnel |
+| `6` | **Production** : foreuse, four, presse, assembleur |
+| `7` | **Stockage** : conteneur, décharge |
+| `R` | Tourner (visible seulement quand on tient un bâtiment) |
+| `U` | Sous-sol |
+
+Une famille est un seul bouton qui montre son dernier bâtiment choisi. Un clic ouvre un
+plateau au-dessus avec tous ses bâtiments (verrouillés compris, avec leur cadenas). Sa
+touche prend son dernier bâtiment, et rappuyer passe au suivant (le plateau s'affiche un
+instant pour montrer où on en est). Les lettres restent : `T` tunnel, `I` filtre,
+`E` assembleur, `B` conteneur, `G` décharge. Le rangement est dans `ui/toolbar.js`
+(`SLOTS`, `GROUPS`).
+
+## Arbre de recherche
+
+Une nouvelle partie ne donne que le **tapis**, la **foreuse**, le **four**, le **filtre** et
+la **décharge** : de quoi faire les lingots de la première commande et trier les résidus. Le reste se débloque dans l'arbre de recherche
+(touche `K`, ou le bouton **Recherche** du HUD), en dépensant des items **livrés au dépôt**.
+Toutes les livraisons comptent, même celles qui ne servent pas à la commande. Les tapis
+livrés vont dans l'inventaire, pas dans la recherche.
+
+| Bâtiment | Requiert | Coût |
+|---|---|---|
+| Splitter, Groupeur | Tapis | 8 lingots de fer |
+| Presse | Four | 10 lingots de fer |
+| Tunnel | Groupeur | 15 plaques de fer |
+| Conteneur | Presse | 15 plaques de fer |
+| Assembleur | Presse | 10 plaques de fer + 10 fils de cuivre |
+| Prioritaire | Splitter | 20 plaques de fer + 15 fils de cuivre |
+
+Dans la palette, un outil pas encore débloqué est grisé avec un cadenas ; le choisir ouvre
+l'arbre. Un message annonce chaque recherche devenue possible, et le bouton Recherche
+montre combien il y en a. L'arbre est dans `data/research.js`, les règles dans
+`sim/research.js` (`game.unlocked`, `game.credits`, sauvegardés), la fenêtre dans
+`ui/research.js`, et le déblocage est la commande `research`. Poser un bâtiment verrouillé
+est refusé par les commandes elles-mêmes (multijoueur compris). Une sauvegarde d'avant
+l'arbre garde tout débloqué ; l'usine de démonstration du menu aussi.
+
+## Recettes
+
+Le four, la presse et l'assembleur acceptent plusieurs sortes d'items, et on choisit dans
+leur fiche quelle recette faire pour chacun (des boutons à allumer ou éteindre) :
+
+| Machine | Recettes possibles | Actives au départ |
+|---|---|---|
+| Four | minerai de fer → lingot de fer ; minerai de cuivre → lingot de cuivre | les deux |
+| Presse | lingot de fer → plaque **ou** engrenage ; lingot de cuivre → fil | plaque et fil |
+| Assembleur | plaque + fil → 2 tapis ; engrenage + fil → 3 tapis | la première |
+
+Une seule recette active par ingrédient : en allumer une éteint celle qui utilise le même.
+Un item sans recette active est refusé par la machine (il reste sur le tapis). Les
+recettes sont dans `data/buildings.js` (`recipes`, `defaultRecipes`), les règles dans
+`data/recipes.js`, le choix est la commande `setRecipe` (champ `recipes` du bâtiment, gardé
+à la copie, au déplacement et dans la sauvegarde).
+
+## Marche / arrêt
+
+Les machines (foreuse, four, presse, assembleur) peuvent être **arrêtées** : elles ne
+fabriquent ni ne sortent plus rien, leur fabrication en cours est mise en pause, et elles
+acceptent encore des items jusqu'à ce que leur stock d'entrée soit plein. Une machine
+arrêtée est assombrie, avec un voyant rouge. Commande `setEnabled` (champ `enabled` du
+bâtiment) : l'état est sauvegardé et partagé en multijoueur.
 
 ## Tapis : une seule entrée
 
@@ -147,7 +237,8 @@ chaque résultat devient une texture réutilisée.
 | Ouvrir la fiche d'un bâtiment (stock, cadence, débit) | clic avec l'outil Déplacer |
 | Régler un filtre (quels items vont dans quelle sortie) | dans sa fiche, qui s'ouvre quand on le pose : clic sur les icônes d'items de chaque sortie |
 | Fermer la fiche | `Échap` ou × |
-| Menu (reprendre, sauvegarder, charger, son, langue, multijoueur, aide, menu principal) | `Échap` quand il n'y a plus rien à annuler, ou le bouton Menu du HUD |
+| Mettre une machine en marche / l'arrêter | `O` en la survolant avec Déplacer, le bouton de sa fiche, ou « Marche / arrêt » dans le menu de la sélection |
+| Menu (reprendre, sauvegarder, charger, son, langue, taille de l'interface, multijoueur, aide, menu principal) | `Échap` quand il n'y a plus rien à annuler, ou le bouton Menu du HUD |
 | Couper le son | `M` |
 | Sauvegarder / reprendre la partie | `Ctrl` / `⌘` + `S`, ou Sauvegarder et Charger dans le menu Échap |
 | Tracer des tapis | glisser avec l'outil Tapis : le chemin s'affiche en aperçu et les tapis sont posés au relâchement (revenir en arrière raccourcit, `Échap` ou clic droit annule) |
@@ -227,6 +318,7 @@ src/
     toolbar.js          palette d'outils
     hint.js             bulle d'aide
     pauseMenu.js        menu Échap (sauvegarde, son, langue, multijoueur, aide)
+    uiScale.js          taille de l'interface (75 % à 150 %), sans toucher à la carte
     levelCard.js        carte de niveau (la commande à livrer, niveau réussi)
     selectionMenu.js    menu au-dessus de la sélection (déplacer, copier, effacer)
     perf.js             compteur d'images par seconde

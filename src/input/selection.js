@@ -10,7 +10,7 @@
 // R tourne le groupe d'un quart de tour pendant qu'il suit le curseur.
 // Rien ici ne modifie l'usine directement : tout passe par des commandes (sim/commands.js).
 import { turnRight } from '../core/grid.js';
-import { onLayer } from '../data/buildings.js';
+import { canBePowered, isOn, onLayer } from '../data/buildings.js';
 import { game, ui } from '../state.js';
 import { emit } from '../core/events.js';
 import { buildingName } from '../i18n/index.js';
@@ -83,6 +83,16 @@ export function eraseSelection() {
   clearSelection();
 }
 
+/**
+ * Marche / arrêt pour les machines de la sélection : si l'une d'elles tourne, on les
+ * arrête toutes ; sinon, on les remet toutes en marche.
+ */
+export function togglePowerSelection() {
+  const machines = ui.selection.filter(canBePowered);
+  if (!machines.length) return;
+  issue({ type: 'setEnabled', ids: machines.map((b) => b.id), enabled: !machines.some(isOn) });
+}
+
 export const startMove = () => startPlacing('move');
 export const startCopy = () => startPlacing('copy');
 
@@ -100,6 +110,7 @@ function startPlacing(mode) {
   const parts = group.map((b) => ({
     type: b.type, kind: b.kind, w: b.w, h: b.h, dx: b.x - x0, dy: b.y - y0, dir: b.dir,
     shape: b.shape, priority: b.priority && [...b.priority], filters: b.filters && structuredClone(b.filters),
+    recipes: b.recipes && [...b.recipes],
     id: mode === 'move' ? b.id : null,
   }));
   ui.placing = { mode, w: x1 - x0, h: y1 - y0, parts };
@@ -189,5 +200,6 @@ function copiedProps(part) {
   if (part.shape) props.shape = part.shape;
   if (part.priority) props.priority = [...part.priority];
   if (part.filters) props.filters = structuredClone(part.filters);
+  if (part.recipes) props.recipes = [...part.recipes];
   return props;
 }
