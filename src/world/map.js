@@ -34,6 +34,7 @@ export function prepareMap(seed) {
   game.nextId = 1;
   game.grid = new Array(MAP_W * MAP_H).fill(null);
   game.under = new Array(MAP_W * MAP_H).fill(null);
+  game.interiors = new Map(); // id d'une usine → sa grille intérieure (world/interiors.js)
   resetFog();
   game.particles = [];
   game.delivered = {};

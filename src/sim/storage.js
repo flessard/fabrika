@@ -8,7 +8,6 @@
 // ses items un par un sur ce qui est devant lui (une réserve tampon sur une ligne).
 import { ITEMS } from '../data/items.js';
 import { outputCell } from '../world/buildings.js';
-import { isStockItem } from '../world/inventory.js';
 import { pushItem } from './transfer.js';
 import { recordFlow } from './flow.js';
 
@@ -48,11 +47,14 @@ export function stepStorage(b) {
   }
 }
 
-/** Retire du conteneur tous les objets de construction (tapis…) : [item, item…]. */
-export function takeStockItems(b) {
+/**
+ * Vide des emplacements du conteneur (un seul, `index`, ou tous) et retourne ce qu'ils
+ * contenaient : [item, item…]. N'importe quel item : il va dans l'inventaire.
+ */
+export function takeSlots(b, index = null) {
   const taken = [];
   b.slots.forEach((slot, i) => {
-    if (!slot || !isStockItem(slot.item)) return;
+    if (!slot || (index !== null && i !== index)) return;
     for (let n = 0; n < slot.count; n++) taken.push(slot.item);
     b.slots[i] = null;
   });

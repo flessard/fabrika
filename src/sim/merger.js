@@ -7,6 +7,7 @@ import { DIRS, cellIndex, inBounds, opposite } from '../core/grid.js';
 import { game } from '../state.js';
 import { MERGER_SHAPES, mergerInputs } from '../data/mergerShapes.js';
 import { buildingAt } from '../world/buildings.js';
+import { isInteriorLayer, isWall, layerInBounds } from '../world/interiors.js';
 import { isBuildable } from '../world/terrain.js';
 import { feedsInto } from './belt.js';
 import { reservedForSomeoneElse } from './transfer.js';
@@ -72,5 +73,7 @@ export function mergerOptions(x, y, dir, preferredShape, layer = 'surface') {
 function openGround(x, y, side, layer) {
   const [dx, dy] = DIRS[side];
   const nx = x + dx, ny = y + dy;
-  return inBounds(nx, ny) && !buildingAt(nx, ny, layer) && (layer === 'under' || isBuildable(game.map, cellIndex(nx, ny)));
+  if (!layerInBounds(layer, nx, ny) || buildingAt(nx, ny, layer)) return false;
+  if (isInteriorLayer(layer)) return !isWall(nx, ny);
+  return layer === 'under' || isBuildable(game.map, cellIndex(nx, ny));
 }

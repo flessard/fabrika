@@ -11,6 +11,7 @@
 // Rien ici ne modifie l'usine directement : tout passe par des commandes (sim/commands.js).
 import { turnRight } from '../core/grid.js';
 import { canBePowered, isOn, onLayer } from '../data/buildings.js';
+import { insideLayer } from './actions.js';
 import { game, ui } from '../state.js';
 import { emit } from '../core/events.js';
 import { buildingName } from '../i18n/index.js';
@@ -140,7 +141,7 @@ export function placementAt(cell) {
   const self = p.mode === 'move' ? new Set(movingGroup(p)) : null;
   const spots = p.parts.map((part) => {
     const x = x0 + part.dx, y = y0 + part.dy;
-    const problem = placementProblem(part.type, x, y, self);
+    const problem = placementProblem(part.type, x, y, self, insideLayer());
     return { part, x, y, ok: !problem, problem };
   });
   // Le groupe posé ne doit pas créer de jonction (deux entrées sur un tapis) avec ses voisins.
@@ -166,7 +167,7 @@ export function placeGroupAt(cell) {
     ui.placing = null;
   } else {
     // Une copie continue de suivre le curseur, pour en poser d'autres.
-    issue({ type: 'placeGroup', parts: spots.map(({ part, x, y }) => ({ building: part.type, x, y, dir: part.dir, props: copiedProps(part) })) });
+    issue({ type: 'placeGroup', layer: insideLayer(), parts: spots.map(({ part, x, y }) => ({ building: part.type, x, y, dir: part.dir, props: copiedProps(part) })) });
   }
 }
 

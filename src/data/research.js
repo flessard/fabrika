@@ -14,14 +14,18 @@ export const RESEARCH = [
   { id: 'drill',         col: 0, row: 3, start: true },
   { id: 'furnace',       col: 0, row: 4, start: true },
 
-  { id: 'splitter',      col: 1, row: 0, requires: ['belt'],     cost: { fe_ingot: 8 } },
-  { id: 'merger',        col: 1, row: 2, requires: ['belt'],     cost: { fe_ingot: 8 } },
+  // Payés en plaques de fer (prises dans l'inventaire) : le dépôt ne prend des lingots que
+  // pendant la première commande.
+  { id: 'splitter',      col: 1, row: 0, requires: ['belt'],     cost: { fe_plate: 8 } },
+  { id: 'merger',        col: 1, row: 2, requires: ['belt'],     cost: { fe_plate: 8 } },
   { id: 'press',         col: 1, row: 4, requires: ['furnace'],  cost: { fe_ingot: 10 } },
 
   { id: 'smartSplitter', col: 2, row: 0, requires: ['splitter'], cost: { fe_plate: 20, cu_wire: 15 } },
   { id: 'tunnel',        col: 2, row: 2, requires: ['merger'],   cost: { fe_plate: 15 } },
   { id: 'container',     col: 2, row: 3, requires: ['press'],    cost: { fe_plate: 15 } },
   { id: 'assembler',     col: 2, row: 4, requires: ['press'],    cost: { fe_plate: 10, cu_wire: 10 } },
+  // L'usine : un bâtiment 4 × 4 avec un intérieur de 32 × 32, pour compacter une ligne.
+  { id: 'factory',       col: 3, row: 4, requires: ['assembler'], cost: { fe_plate: 40, cu_wire: 30 } },
 ];
 
 export const researchNode = (id) => RESEARCH.find((node) => node.id === id) ?? null;

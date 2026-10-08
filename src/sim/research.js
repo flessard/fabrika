@@ -5,6 +5,7 @@ import { BUILDINGS, baseType } from '../data/buildings.js';
 import { RESEARCH, researchNode } from '../data/research.js';
 import { buildingName, itemPlural, t, toolName } from '../i18n/index.js';
 import { game } from '../state.js';
+import { isStockItem, stockOf } from '../world/inventory.js';
 
 /** L'outil est-il débloqué ? (Ceux qui ne sont pas dans l'arbre le sont toujours.) */
 export const toolUnlocked = (toolId) => !researchNode(toolId) || game.unlocked.includes(toolId);
@@ -21,10 +22,27 @@ export const creditOf = (item) => game.credits[item] ?? 0;
 
 export const addCredit = (item) => { game.credits[item] = creditOf(item) + 1; };
 
+/**
+ * Ce qu'on peut dépenser d'un item pour la recherche : les objets de construction
+ * (plaques de fer…) se prennent dans l'inventaire ; les autres, dans les items livrés
+ * au dépôt, puis dans l'inventaire (ce qu'on a pris dans un conteneur, par exemple).
+ */
+export const fundsOf = (item) => (isStockItem(item) ? stockOf(item) : creditOf(item) + stockOf(item));
+
+function spendFunds(item, n) {
+  if (isStockItem(item)) {
+    game.inventory[item] = stockOf(item) - n;
+    return;
+  }
+  const fromCredits = Math.min(n, creditOf(item));
+  game.credits[item] = creditOf(item) - fromCredits;
+  if (n > fromCredits) game.inventory[item] = stockOf(item) - (n - fromCredits);
+}
+
 /** Les nœuds qu'il manque avant celui-ci. */
 export const missingRequirements = (node) => (node.requires ?? []).filter((id) => !game.unlocked.includes(id));
 
-export const canAfford = (node) => Object.entries(node.cost ?? {}).every(([item, n]) => creditOf(item) >= n);
+export const canAfford = (node) => Object.entries(node.cost ?? {}).every(([item, n]) => fundsOf(item) >= n);
 
 /**
  * Pourquoi on ne peut pas débloquer ce nœud, ou null : déjà fait, il en manque un
@@ -36,7 +54,7 @@ export function researchProblem(id) {
   const missing = missingRequirements(node);
   if (missing.length) return t('research.problem.requires', { names: missing.map(toolName).join(', ') });
   for (const [item, n] of Object.entries(node.cost ?? {})) {
-    if (creditOf(item) < n) return t('research.problem.cost', { n: n - creditOf(item), item: itemPlural(item) });
+    if (fundsOf(item) < n) return t('research.problem.cost', { n: n - fundsOf(item), item: itemPlural(item) });
   }
   return null;
 }
@@ -44,7 +62,7 @@ export function researchProblem(id) {
 /** Dépense le coût et débloque. À n'appeler que si researchProblem(id) est null. */
 export function unlock(id) {
   const node = researchNode(id);
-  for (const [item, n] of Object.entries(node.cost ?? {})) game.credits[item] = creditOf(item) - n;
+  for (const [item, n] of Object.entries(node.cost ?? {})) spendFunds(item, n);
   // Dans l'ordre de l'arbre : la même liste chez tous les joueurs.
   game.unlocked = RESEARCH.map((r) => r.id).filter((r) => r === id || game.unlocked.includes(r));
 }

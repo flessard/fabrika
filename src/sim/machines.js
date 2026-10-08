@@ -14,11 +14,26 @@ import { recordDelivery } from './levels.js';
 import { addCredit } from './research.js';
 import { addToStock, isStockItem } from '../world/inventory.js';
 import { insertIntoStorage, storageCouldAccept } from './storage.js';
+import { currentLevel } from './levels.js';
+
+/**
+ * Ce que le dépôt accepte :
+ *  - les items de la commande en cours (même une ressource déjà complète) ;
+ *  - les objets de construction (tapis, plaques de fer), qui vont dans l'inventaire ;
+ *  - tout, une fois toutes les commandes livrées (partie libre).
+ * Jamais les résidus. Le reste reste sur le tapis, qui affiche le refus.
+ */
+export function hubWants(itemType) {
+  if (ITEMS[itemType]?.waste) return false;
+  if (isStockItem(itemType)) return true;
+  const level = currentLevel();
+  return !level || level.goals.some((goal) => goal.item === itemType);
+}
 
 /** Une machine reçoit un item. Retourne vrai s'il est accepté. */
 export function insertIntoMachine(machine, itemType) {
   if (machine.kind === 'hub') {
-    if (ITEMS[itemType]?.waste) return false; // le dépôt ne prend pas les résidus
+    if (!hubWants(itemType)) return false;
     deliver(machine, itemType);
     return true;
   }
@@ -39,17 +54,17 @@ export function insertIntoMachine(machine, itemType) {
  */
 /**
  * La machine refuse-t-elle cet item tel qu'elle est réglée ? (Pas « pleine pour
- * l'instant » : elle ne le prendra jamais.) Le dépôt refuse les résidus, une machine
- * les items sans recette active, une foreuse tout.
+ * l'instant » : elle ne le prendra jamais.) Le dépôt refuse ce que la commande ne
+ * demande pas (voir hubWants), une machine les items sans recette active, une foreuse tout.
  */
 export function machineRefuses(machine, itemType) {
-  if (machine.kind === 'hub') return !!ITEMS[itemType]?.waste;
+  if (machine.kind === 'hub') return !hubWants(itemType);
   if (machine.kind === 'crafter') return !recipeUsing(machine, itemType);
   return machine.kind === 'drill';
 }
 
 export function machineCouldAccept(machine, itemType) {
-  if (machine.kind === 'hub') return !ITEMS[itemType]?.waste;
+  if (machine.kind === 'hub') return hubWants(itemType);
   if (machine.kind === 'dump') return true;
   if (machine.kind === 'storage') return storageCouldAccept(machine, itemType);
   if (machine.kind !== 'crafter') return false;

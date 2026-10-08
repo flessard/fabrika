@@ -15,7 +15,8 @@ export const ITEMS = {
   coal:     { shape: 'ore',   light: P.steel,  base: P.night,  accent: P.slate, stack: 50 },
   fe_ingot: { shape: 'ingot', light: P.white,  base: P.mist,   accent: P.silver, stack: 50 },
   cu_ingot: { shape: 'ingot', light: P.yellow, base: P.orange, accent: P.rust, stack: 50 },
-  fe_plate: { shape: 'plate', light: P.white,  base: P.mist,   accent: P.silver, stack: 50 },
+  // La plaque de fer sert aussi à bâtir (data/buildings.js, cost) : elle va dans l'inventaire.
+  fe_plate: { shape: 'plate', light: P.white,  base: P.mist,   accent: P.silver, stock: true, stack: 50 },
   belt:     { shape: 'belt',  light: P.silver, base: P.night,  accent: P.amber, stock: true, stack: 20 },
   fe_gear:  { shape: 'gear',  light: P.mist,   base: P.steel,  accent: P.silver, stack: 50 },
   cu_wire:  { shape: 'wire',  light: P.amber,  base: P.copper, accent: P.copper, stack: 100 },

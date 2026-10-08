@@ -1,6 +1,7 @@
 // Souris, trackpad, tactile et clavier → actions du jeu.
 import { MAP_H, MAP_W, PAN_SPEED, TILE } from '../config.js';
 import { inBounds } from '../core/grid.js';
+import { isInteriorLayer, layerInBounds } from '../world/interiors.js';
 import { hasInfoPanel } from '../data/buildings.js';
 import { ui, view } from '../state.js';
 import { buildingAt } from '../world/buildings.js';
@@ -19,6 +20,8 @@ import { toggleSound } from '../ui/hud.js';
 import { openPause } from '../ui/pauseMenu.js';
 import { closeLevelCard, isLevelCardOpen } from '../ui/levelCard.js';
 import { closeResearch, isResearchOpen, toggleResearch } from '../ui/research.js';
+import { closeInventory, isInventoryOpen } from '../ui/inventoryWindow.js';
+import { enterFactory, exitFactory, isInsideFactory } from '../ui/factoryView.js';
 
 /** Touches enfoncées en ce moment (en minuscules ; ' ' pour la barre d'espace). */
 const keysDown = new Set();
@@ -43,6 +46,13 @@ export function initControls(canvas, minimap) {
     endDrag(canvas);
   });
   canvas.addEventListener('pointerleave', () => { if (!drag) ui.hover = null; });
+  // Double-clic sur une usine, avec l'outil Déplacer : on entre dedans.
+  canvas.addEventListener('dblclick', (e) => {
+    if (ui.tool !== 'hand') return;
+    const cell = cellFromEvent(e);
+    const target = buildingAt(cell.x, cell.y, ui.layer);
+    if (target?.kind === 'factory') enterFactory(target);
+  });
   canvas.addEventListener('wheel', onWheel, { passive: false });
 
   addEventListener('keydown', onKeyDown);
@@ -94,7 +104,7 @@ function onPointerDown(e, canvas) {
 
 function onPointerMove(e) {
   const cell = cellFromEvent(e);
-  ui.hover = inBounds(cell.x, cell.y) ? cell : null;
+  ui.hover = layerInBounds(ui.layer, cell.x, cell.y) ? cell : null;
   ui.pointer = ui.hover ? worldFromEvent(e) : null;
   showCursorCell(ui.hover);
   if (!drag) return;
@@ -194,6 +204,8 @@ function onKeyDown(e) {
     // Échap annule d'abord ce qui est en cours ; quand il n'y a plus rien, il ouvre le menu.
     if (isTrayOpen()) closeTray();
     else if (isResearchOpen()) closeResearch();
+    else if (isInventoryOpen()) closeInventory();
+    else if (isInsideFactory() && !ui.selected && ui.tool === 'hand') exitFactory();
     else if (isLevelCardOpen()) closeLevelCard();
     else if (ui.selected || ui.tool !== 'hand') {
       ui.selected = null;
@@ -226,6 +238,7 @@ export function applyKeyboardPan(dt) {
 function initMinimapControls(minimap) {
   let dragging = false;
   const jumpTo = (e) => {
+    if (isInteriorLayer(ui.layer)) return; // dans une usine, la mini-carte montre la carte, pas l'intérieur
     const r = minimap.getBoundingClientRect();
     view.camX = ((e.clientX - r.left) / r.width) * MAP_W * TILE - view.width / 2;
     view.camY = ((e.clientY - r.top) / r.height) * MAP_H * TILE - view.height / 2;

@@ -7,7 +7,8 @@ import { BELT_SPEED } from '../config.js';
 import { DIRS, inBounds, opposite } from '../core/grid.js';
 import { game } from '../state.js';
 import { splitterOutputs } from '../data/splitterShapes.js';
-import { inputLayer, isTunnel, layersOf, onLayer, outputLayer } from '../data/buildings.js';
+import { inputLayer, isTunnel, layersOf, layersOfBuilding, onLayer, outputLayer } from '../data/buildings.js';
+import { ALL_DOORS, doorCell, insideCell, interiorLayer, outsideCell } from '../world/interiors.js';
 import { t } from '../i18n/index.js';
 import { buildingAt, outputCell } from '../world/buildings.js';
 import { canEnter, pushItem, reservedForSomeoneElse, reserveEntry } from './transfer.js';
@@ -61,7 +62,7 @@ export function stepBelt(belt, dt) {
       belt.stalled = true;
       return;
     }
-    reserveEntry(nx, ny, belt);
+    reserveEntry(nx, ny, belt, belt.dir);
     item.committed = true;
   }
 
@@ -141,7 +142,7 @@ export function mergeProblem(virtuals, ignore = null) {
   for (const v of virtuals) {
     if (isPlainBelt(v)) toCheck.add(v);
     // Les tapis voisins où v enverrait ses items
-    for (const layer of layersOf(v.type)) {
+    for (const layer of layersOfBuilding(v)) {
       for (let cy = v.y; cy < v.y + v.h; cy++) {
         for (let cx = v.x; cx < v.x + v.w; cx++) {
           for (let side = 0; side < 4; side++) {
@@ -173,6 +174,21 @@ export function feedsInto(b, x, y, towardCell, layer = 'surface') {
     case 'splitter': return splitterOutputs(b.dir, b.shape).includes(towardCell);
     case 'belt':
     case 'merger': return b.dir === towardCell;
+    case 'door': {
+      // Une porte amène ses items dans la case derrière elle, à l'intérieur.
+      const [ix, iy] = insideCell(b.side, b.k);
+      return towardCell === opposite(b.side) && ix === x && iy === y;
+    }
+    case 'factory': {
+      // L'usine sort des items par une porte quand, à l'intérieur, quelque chose y envoie les siens.
+      const k = ALL_DOORS.find((d) => d.side === towardCell && sameCell(outsideCell(b, d.side, d.k), x, y))?.k;
+      if (k === undefined) return false;
+      const inside = interiorLayer(b);
+      const [dx, dy] = doorCell(towardCell, k);
+      const [ix, iy] = insideCell(towardCell, k);
+      const feeder = buildingAt(ix, iy, inside);
+      return !!feeder && feedsInto(feeder, dx, dy, towardCell, inside);
+    }
     case 'storage': if (!b.outputOpen) return false; // conteneur fermé : il ne renvoie rien
     // falls through : sinon, comme une machine
     default: {
@@ -181,5 +197,7 @@ export function feedsInto(b, x, y, towardCell, layer = 'surface') {
     }
   }
 }
+
+const sameCell = ([ax, ay], x, y) => ax === x && ay === y;
 
 const covers = (b, x, y) => x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h;

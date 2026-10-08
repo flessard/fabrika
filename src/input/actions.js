@@ -15,6 +15,11 @@ import { mergeProblem } from '../sim/belt.js';
 import { issue } from '../sim/commands.js';
 import { playSound } from '../audio/sounds.js';
 import { cycleShape, hasShapes, nextShapeFor, rememberShape, shapeChoice } from './shapePicker.js';
+import { isInteriorLayer } from '../world/interiors.js';
+import { autoFilters } from '../sim/autoFilter.js';
+
+/** L'intérieur d'usine où l'on bâtit (« in:<id> »), ou null dehors. Voyage avec les commandes de pose. */
+export const insideLayer = () => (isInteriorLayer(ui.layer) ? ui.layer : null);
 
 /**
  * Type de bâtiment que pose l'outil actif sur la couche regardée, ou null.
@@ -36,7 +41,10 @@ export function eraseAt(cell) {
 }
 
 /** Un bâtiment tel qu'il serait posé (pour vérifier les jonctions avant d'envoyer la commande). */
-const virtualOf = (type, x, y, dir, props = {}) => ({ type, kind: BUILDINGS[type].kind, x, y, w: BUILDINGS[type].w, h: BUILDINGS[type].h, dir, ...props });
+const virtualOf = (type, x, y, dir, props = {}) => ({
+  type, kind: BUILDINGS[type].kind, x, y, w: BUILDINGS[type].w, h: BUILDINGS[type].h, dir, ...props,
+  ...(insideLayer() ? { layer: insideLayer() } : {}),
+});
 
 /** Refus immédiat, sans attendre la commande : son et bulle d'aide qui dit pourquoi. */
 function deny() {
@@ -51,8 +59,8 @@ export function buildAt(cell) {
   if (hasShapes(ui.tool)) return placeShaped(cell, type);
 
   const { x, y } = anchorFor(type, cell);
-  if (!canPlace(type, x, y) || stockProblem(type) || mergeProblem([virtualOf(type, x, y, ui.dir)])) return deny();
-  issue({ type: 'place', building: type, x, y, dir: ui.dir });
+  if (!canPlace(type, x, y, null, insideLayer()) || stockProblem(type) || mergeProblem([virtualOf(type, x, y, ui.dir)])) return deny();
+  issue({ type: 'place', building: type, x, y, dir: ui.dir, layer: insideLayer() });
   // Après une entrée de tunnel, on pose le plus souvent sa sortie.
   if (ui.tool === 'tunnel') toggleTunnelEnd();
 }
@@ -66,7 +74,9 @@ function placeShaped(cell, type) {
   if (!choice.ok || mergeProblem([virtualOf(type, cell.x, cell.y, choice.dir, { shape: choice.shape })])) return deny();
   const props = { shape: choice.shape };
   if (ui.tool === 'smartSplitter') props.priority = [...ui.smartPriority];
-  issue({ type: 'place', building: type, x: cell.x, y: cell.y, dir: choice.dir, props });
+  // Un filtre se règle tout seul d'après ce qui arrive et où mène chaque sortie (sim/autoFilter.js).
+  if (BUILDINGS[type].filter) props.filters = autoFilters(cell.x, cell.y, choice.dir, choice.shape, ui.layer);
+  issue({ type: 'place', building: type, x: cell.x, y: cell.y, dir: choice.dir, props, layer: insideLayer() });
   rememberShape(ui.tool, choice.shape);
 }
 
@@ -113,7 +123,7 @@ export function commitBeltPlan() {
   const plan = ui.beltPlan;
   if (!plan) return;
   ui.beltPlan = null;
-  issue({ type: 'placeBelts', building: plan.type, cells: plan.cells.map(({ x, y, dir }) => ({ x, y, dir })) });
+  issue({ type: 'placeBelts', building: plan.type, cells: plan.cells.map(({ x, y, dir }) => ({ x, y, dir })), layer: insideLayer() });
 }
 
 /** Échap ou clic droit pendant le glisser : le chemin est abandonné. */

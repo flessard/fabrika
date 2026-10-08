@@ -19,6 +19,52 @@ function hazardStripes(x0, y0, w, h) {
 }
 
 const STATIC_SPRITES = {
+  // Usine : un grand bâtiment (4 × 4 cases) au toit en dents de scie, avec une enseigne,
+  // et une porte sur chaque case de son contour (4 par côté).
+  factory: () => makeCanvas(64, 64, () => {
+    rect(0, 0, 64, 64, P.black);
+    // Murs en briques
+    for (let y = 1; y < 63; y++) {
+      for (let x = 1; x < 63; x++) {
+        const row = (y - 1) >> 2;
+        const mortar = (y - 1) % 4 === 3 || (x + (row & 1) * 4) % 8 === 7;
+        rect(x, y, 1, 1, mortar ? P.soot : hash2(x, y) % 9 === 0 ? P.clay : P.bark);
+      }
+    }
+    // Toit en dents de scie : bandes vitrées (lumière) et pentes en tôle
+    rect(6, 6, 52, 40, P.black);
+    for (let i = 0; i < 5; i++) {
+      const y = 7 + i * 8;
+      rect(7, y, 50, 5, P.steel);
+      rect(7, y, 50, 1, P.silver);
+      rect(7, y + 5, 50, 2, P.sky);
+      rect(7, y + 5, 50, 1, P.cyan);
+    }
+    // Cheminée et enseigne
+    rect(46, 2, 8, 10, P.black);
+    rect(47, 3, 6, 8, P.rust);
+    rect(47, 3, 6, 1, P.copper);
+    rect(18, 48, 28, 10, P.black);
+    rect(19, 49, 26, 8, P.night);
+    for (const [x, w] of [[22, 3], [27, 3], [32, 3], [37, 4]]) rect(x, 52, w, 2, P.amber);
+    // Portes : une par case du contour
+    for (let k = 0; k < 4; k++) {
+      const p = 4 + k * 16;
+      rect(p + 2, 0, 4, 2, P.slate);   // haut
+      rect(p + 2, 62, 4, 2, P.slate);  // bas
+      rect(0, p + 2, 2, 4, P.slate);   // gauche
+      rect(62, p + 2, 2, 4, P.slate);  // droite
+    }
+  }),
+  // Porte dans le mur d'une usine (vue de l'intérieur) : une ouverture rayée.
+  door: () => makeCanvas(16, 16, () => {
+    rect(0, 0, 16, 16, P.black);
+    rect(1, 1, 14, 14, P.slate);
+    rect(3, 3, 10, 10, P.night);
+    hazardStripes(3, 3, 10, 2);
+    hazardStripes(3, 11, 10, 2);
+    rect(5, 6, 6, 4, P.black);
+  }),
   // Décharge : une fosse sombre sous une grille, bordée de rayures.
   dump: () => makeCanvas(16, 16, () => {
     rect(0, 0, 16, 16, P.black);
@@ -337,7 +383,8 @@ export function drawMachineBody(b, state, sx, sy, { shadow = true } = {}) {
   if (shadow) withAlpha(0.35, () => rect(sx + 3, sy + 4, b.w * TILE, b.h * TILE, P.black));
   currentCtx().drawImage(machineSprite(b.type), sx, sy);
   ANIMATE[b.type]?.(state, sx, sy);
-  if (b.kind !== 'hub' && b.kind !== 'dump' && !(b.kind === 'storage' && !state.open)) drawOutputChute(b, sx, sy);
+  const noChute = b.kind === 'hub' || b.kind === 'dump' || b.kind === 'factory' || b.kind === 'door' || (b.kind === 'storage' && !state.open);
+  if (!noChute) drawOutputChute(b, sx, sy);
 }
 
 /** Voyant rouge d'une machine arrêtée, dans son coin haut-droit. */

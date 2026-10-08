@@ -3,7 +3,7 @@
 import { MAP_H, MAP_W, TILE } from '../config.js';
 import { DIRS, cellIndex, opposite } from '../core/grid.js';
 import { hash2 } from '../core/random.js';
-import { BUILDINGS, isBuildTool, isTunnel, isUnderground, layersOf, outputLayer } from '../data/buildings.js';
+import { BUILDINGS, isBuildTool, isTunnel, isUnderground, layersOf, layersOfBuilding, outputLayer } from '../data/buildings.js';
 import { PALETTE as P } from '../data/palette.js';
 import { game, ui, view } from '../state.js';
 import { GROUND } from '../world/terrain.js';
@@ -11,7 +11,9 @@ import { anchorFor, buildingAt, canPlace, outputCell } from '../world/buildings.
 import { affordable, stockProblem } from '../world/inventory.js';
 import { hasShapes, shapeChoice } from '../input/shapePicker.js';
 import { highlightedBuildings, placementAt, selectBoxArea } from '../input/selection.js';
-import { toolType } from '../input/actions.js';
+import { toolType, insideLayer } from '../input/actions.js';
+import { isInteriorLayer, layerSize } from '../world/interiors.js';
+import { autoFilters } from '../sim/autoFilter.js';
 import { beltArms, feedsInto, mergeProblem } from '../sim/belt.js';
 import { emptyFilters } from '../data/splitterShapes.js';
 import { outputScore } from '../sim/splitter.js';
@@ -26,17 +28,24 @@ import { isConveyor } from '../sim/transfer.js';
  */
 export const cameraOrigin = () => ({ ox: Math.floor(view.camX), oy: Math.floor(view.camY) });
 
-/** Cases visibles à l'écran. */
+/** Cases visibles à l'écran (de la carte, ou de l'intérieur de l'usine où l'on est). */
 export function visibleCells(ox, oy) {
+  const { w, h } = layerSize(ui.layer);
   return {
     x0: Math.max(0, Math.floor(ox / TILE)),
     y0: Math.max(0, Math.floor(oy / TILE)),
-    x1: Math.min(MAP_W - 1, Math.ceil((ox + view.width) / TILE)),
-    y1: Math.min(MAP_H - 1, Math.ceil((oy + view.height) / TILE)),
+    x1: Math.min(w - 1, Math.ceil((ox + view.width) / TILE)),
+    y1: Math.min(h - 1, Math.ceil((oy + view.height) / TILE)),
   };
 }
 
-export const isVisible = (b, ox, oy) =>
+/**
+ * Le bâtiment fait-il partie de la vue ? Dans une usine, seulement ce qui est dedans ;
+ * dehors, tout sauf ce qui est dans les usines.
+ */
+export const inView = (b) => (isInteriorLayer(ui.layer) ? b.layer === ui.layer : !b.layer);
+
+export const isVisible = (b, ox, oy) => inView(b) &&
   b.x * TILE + b.w * TILE > ox - 8 && b.x * TILE < ox + view.width + 8 &&
   b.y * TILE + b.h * TILE > oy - 8 && b.y * TILE < oy + view.height + 8;
 
@@ -95,8 +104,9 @@ const CONVEYOR_TOOLS = new Set(['belt', 'splitter', 'smartSplitter', 'merger', '
  */
 export function machinePorts(visible) {
   if (ui.layer === 'under') return [];
+  const L = ui.layer; // la surface, ou l'intérieur de l'usine où l'on est
   const ports = [];
-  const hovered = ui.hover && buildingAt(ui.hover.x, ui.hover.y);
+  const hovered = ui.hover && buildingAt(ui.hover.x, ui.hover.y, L);
   const showAll = CONVEYOR_TOOLS.has(ui.tool);
 
   for (const b of visible) {
@@ -107,7 +117,7 @@ export function machinePorts(visible) {
       // Au milieu du bord, entre la dernière case de la machine et la case de sortie.
       const [dx, dy] = DIRS[b.dir];
       // Branchée si ce qui est devant la sortie peut recevoir (tapis dans le bon sens, machine…).
-      const connected = outputScore(out[0] - dx, out[1] - dy, b.dir) === 1;
+      const connected = outputScore(out[0] - dx, out[1] - dy, b.dir, L) === 1;
       ports.push({ x: (out[0] + 0.5 - dx / 2) * TILE, y: (out[1] + 0.5 - dy / 2) * TILE, dir: b.dir, kind: 'out', connected, faint: false });
     }
     if (b.kind === 'drill') continue; // une foreuse ne reçoit rien
@@ -120,8 +130,8 @@ export function machinePorts(visible) {
           const nx = cx + dx, ny = cy + dy;
           if (nx >= b.x && nx < b.x + b.w && ny >= b.y && ny < b.y + b.h) continue; // case de la machine
           if (out && nx === out[0] && ny === out[1]) continue;
-          const neighbor = buildingAt(nx, ny);
-          const connected = !!neighbor && feedsInto(neighbor, cx, cy, opposite(side));
+          const neighbor = buildingAt(nx, ny, L);
+          const connected = !!neighbor && feedsInto(neighbor, cx, cy, opposite(side), L);
           if (!connected && !all) continue;
           ports.push({ x: (cx + 0.5 + dx / 2) * TILE, y: (cy + 0.5 + dy / 2) * TILE, dir: opposite(side), kind: 'in', connected, faint: !connected });
         }
@@ -175,6 +185,7 @@ export function refusalMarks(visible, time) {
 
 /** Reflets blancs (2 × 1 px) sur l'eau visible, qui changent 3 fois par seconde. */
 export function waterSparkles({ x0, y0, x1, y1 }, time) {
+  if (isInteriorLayer(ui.layer)) return []; // pas d'eau dans une usine
   const tick = Math.floor(time * 3);
   const sparkles = [];
   for (let y = y0; y <= y1; y++) {
@@ -217,7 +228,7 @@ export function cursorPreview(cell, time) {
   const def = BUILDINGS[type];
   const { x, y } = anchorFor(type, cell);
   // Le bâtiment tel qu'il serait posé, pour calculer les raccords.
-  const virtual = { type, kind: def.kind, x, y, w: def.w, h: def.h, dir: ui.dir };
+  const virtual = { type, kind: def.kind, x, y, w: def.w, h: def.h, dir: ui.dir, ...(insideLayer() ? { layer: insideLayer() } : {}) };
   let ghost, ok;
   if (hasShapes(ui.tool)) {
     const choice = shapeChoice(ui.tool, cell);
@@ -226,15 +237,16 @@ export function cursorPreview(cell, time) {
     virtual.shape = choice.shape;
     ghost = { kind: def.kind, x, y, dir: choice.dir, shape: choice.shape, under: isUnderground(virtual) };
     if (def.priority) ghost.priority = virtual.priority = ui.smartPriority;
-    if (def.filter) ghost.filters = emptyFilters();
+    // L'aperçu d'un filtre montre déjà le réglage automatique qu'il aura une fois posé.
+    if (def.filter) ghost.filters = virtual.filters = autoFilters(x, y, choice.dir, choice.shape, ui.layer);
   } else if (def.tunnel) {
-    ok = canPlace(type, x, y) && !stockProblem(type);
+    ok = canPlace(type, x, y, null, insideLayer()) && !stockProblem(type);
     ghost = { kind: 'tunnel', x, y, dir: ui.dir, end: def.tunnel };
   } else if (def.kind === 'belt') {
-    ok = canPlace(type, x, y) && !stockProblem(type);
+    ok = canPlace(type, x, y, null, insideLayer()) && !stockProblem(type);
     ghost = { kind: type, x, y, dir: ui.dir, arms: ok ? beltArms(virtual, virtual) : [ui.dir, opposite(ui.dir)] };
   } else {
-    ok = canPlace(type, x, y) && !stockProblem(type);
+    ok = canPlace(type, x, y, null, insideLayer()) && !stockProblem(type);
     ghost = { kind: 'machine', building: { ...virtual, anim: time * 4, working: false } };
   }
   // Une jonction (deux entrées sur un tapis) se fait par un groupeur, jamais toute seule.
@@ -254,8 +266,8 @@ function beltPlanPreview() {
   // Le stock de tapis s'épuise le long du chemin : la suite est en rouge.
   let left = affordable(type);
   for (const { x, y, dir } of cells) {
-    const v = { type, kind: def.kind, x, y, w: 1, h: 1, dir };
-    if (canPlace(type, x, y) && left > 0 && !mergeProblem([...virtuals, v])) {
+    const v = { type, kind: def.kind, x, y, w: 1, h: 1, dir, ...(insideLayer() ? { layer: insideLayer() } : {}) };
+    if (canPlace(type, x, y, null, insideLayer()) && left > 0 && !mergeProblem([...virtuals, v])) {
       virtuals.push(v);
       left--;
     } else outlines.push({ x, y, w: 1, h: 1, color: P.red });
@@ -268,7 +280,7 @@ function beltPlanPreview() {
 function reshapedNeighbors(virtuals) {
   const changes = new Map();
   for (const virtual of virtuals) {
-    for (const layer of layersOf(virtual.type)) {
+    for (const layer of layersOfBuilding(virtual)) {
       for (let cy = virtual.y; cy < virtual.y + virtual.h; cy++) {
         for (let cx = virtual.x; cx < virtual.x + virtual.w; cx++) {
           for (const [dx, dy] of DIRS) {

@@ -25,6 +25,7 @@ import { initHud, showMapInfo, showToast, updateInventory } from './ui/hud.js';
 import { initLevelCard } from './ui/levelCard.js';
 import { initPauseMenu } from './ui/pauseMenu.js';
 import { initResearch, updateResearch } from './ui/research.js';
+import { initInventoryWindow, updateInventoryWindow } from './ui/inventoryWindow.js';
 import { initUiScale } from './ui/uiScale.js';
 import { updateHint } from './ui/hint.js';
 import { closeInfoPanel, initInfoPanel, updateInfoPanel } from './ui/infoPanel.js';
@@ -34,6 +35,7 @@ import { initMultiplayer, updatePresence } from './ui/multiplayer.js';
 import { initTitle, updateTitle } from './ui/title.js';
 import { initSelectionMenu, updateSelectionMenu } from './ui/selectionMenu.js';
 import { buildToolbar, setTool, updateToolCounts } from './ui/toolbar.js';
+import { exitFactory, initFactoryView, updateFactoryView } from './ui/factoryView.js';
 import { installCursors } from './ui/cursors.js';
 import { formatDate, t } from './i18n/index.js';
 import { loadFromBrowser, saveToBrowser, savedInBrowser } from './world/save.js';
@@ -54,6 +56,7 @@ setResizeHandler(renderer.resize);
 // ---------- Réactions aux événements du jeu ----------
 
 on('map:new', ({ loaded }) => {
+  exitFactory(); // une nouvelle carte (ou une partie chargée) commence dehors
   closeInfoPanel();
   resetSelection();
   clearCommands();
@@ -96,6 +99,8 @@ initHud({ onSave: saveGame, onLoad: loadSavedGame });
 initLevelCard();
 initPauseMenu();
 initResearch();
+initFactoryView();
+initInventoryWindow();
 initUiScale();
 on('ui:scale', clampCamera);
 addEventListener('keydown', (e) => {
@@ -170,6 +175,8 @@ function frame(now) {
   updateInfoPanel();
   updateSelectionMenu();
   updateInventory();
+  updateInventoryWindow();
+  updateFactoryView();
   updateToolCounts();
   updateResearch();
   updatePresence();

@@ -407,6 +407,19 @@ version de surface (`base`).
 - Les **données** (`data/`) décrivent le contenu. Ajouter un item ou une recette se fait surtout là.
 - `state.js` contient tout l'état partagé. Les modules le lisent et le modifient directement.
 
+### Les usines (bâtiment avec un intérieur)
+
+Une Usine occupe 4 × 4 cases sur la carte et contient sa propre grille de 32 × 32 cases
+(`src/world/interiors.js`). L'intérieur est une couche de plus, nommée `in:<id de l'usine>`,
+à côté de la surface et du sous-sol ; un bâtiment posé dedans le garde dans son champ `layer`.
+
+- Chaque case du contour a une porte dans le mur intérieur (16 portes). Un tapis du dehors
+  qui entre par une case du contour amène ses items derrière la porte ; un tapis de
+  l'intérieur qui va vers une porte les fait ressortir dehors (`src/sim/transfer.js`).
+- On entre par la fiche de l'usine (« Entrer ») ou d'un double-clic ; on sort avec Échap.
+- Dedans : seulement des bâtiments de transformation (pas de foreuse, de tunnel ni d'usine).
+- Une usine ne s'efface que vide.
+
 ### Ajouter une machine qui transforme des items
 
 1. Ajouter ses items dans `src/data/items.js`, et leurs noms dans `src/i18n/` (`item.<id>`, `item.<id>.plural`).

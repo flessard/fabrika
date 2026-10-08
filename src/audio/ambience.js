@@ -4,12 +4,26 @@
 // on additionne ce qu'on entend de chaque machine du même type pour régler son
 // volume, et leur position moyenne pour régler le côté gauche/droite.
 import { BELT_SPEED, TILE } from '../config.js';
-import { game } from '../state.js';
+import { game, ui } from '../state.js';
+import { factoryIdOf, isInteriorLayer } from '../world/interiors.js';
+import { buildingById } from '../world/buildings.js';
 import { audioContext, masterOutput, whiteNoise } from './engine.js';
 import { INAUDIBLE, hearing } from './hearing.js';
 import { isConveyor } from '../sim/transfer.js';
 
 const center = (b) => [(b.x + b.w / 2) * TILE, (b.y + b.h / 2) * TILE];
+
+/**
+ * D'où vient le son d'une machine, dans les coordonnées de ce qu'on regarde. Dehors, ce
+ * qui tourne dans une usine s'entend depuis l'usine ; dans une usine, on n'entend que
+ * ce qui est dedans. Null : on ne l'entend pas.
+ */
+function soundPosition(b) {
+  if (isInteriorLayer(ui.layer)) return b.layer === ui.layer ? center(b) : null;
+  if (!b.layer) return center(b);
+  const factory = buildingById(factoryIdOf(b.layer));
+  return factory ? center(factory) : null;
+}
 
 const LOOPS = {
   /** Foreuses : grondement grave qui grince par saccades. */
@@ -87,7 +101,9 @@ export function updateAmbience({ muted = false } = {}) {
     let loudness = 0, panSum = 0;
     for (const b of muted ? [] : game.buildings) {
       if (!loop.isActive(b)) continue;
-      const { gain, pan } = hearing(...center(b));
+      const at = soundPosition(b);
+      if (!at) continue;
+      const { gain, pan } = hearing(...at);
       if (gain < INAUDIBLE) continue;
       loudness += gain;
       panSum += gain * pan;

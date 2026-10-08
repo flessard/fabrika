@@ -5,6 +5,7 @@ import { DIRS, cellIndex, inBounds, opposite } from '../core/grid.js';
 import { game } from '../state.js';
 import { SPLITTER_SHAPES, filterOutputs, priorityOrder, splitterOutputs } from '../data/splitterShapes.js';
 import { mergerInputs } from '../data/mergerShapes.js';
+import { isInteriorLayer, isWall, layerInBounds } from '../world/interiors.js';
 import { inputLayer, isTunnel } from '../data/buildings.js';
 import { buildingAt } from '../world/buildings.js';
 import { isBuildable } from '../world/terrain.js';
@@ -72,7 +73,7 @@ export function stepSplitter(splitter, dt) {
       return;
     }
     const [dx, dy] = DIRS[outputs[chosen]];
-    reserveEntry(splitter.x + dx, splitter.y + dy, splitter);
+    reserveEntry(splitter.x + dx, splitter.y + dy, splitter, outputs[chosen]);
     item.outDir = outputs[chosen];
     item.outIndex = chosen;
   }
@@ -99,7 +100,7 @@ export function stepSplitter(splitter, dt) {
 export function outputScore(x, y, side, layer = 'surface') {
   const [dx, dy] = DIRS[side];
   const nx = x + dx, ny = y + dy;
-  if (!inBounds(nx, ny)) return -1;
+  if (!layerInBounds(layer, nx, ny)) return -1;
 
   const neighbor = buildingAt(nx, ny, layer);
   if (neighbor) {
@@ -109,10 +110,14 @@ export function outputScore(x, y, side, layer = 'surface') {
     if (neighbor.kind === 'belt') return neighbor.dir === opposite(side) ? -1 : 1;
     if (neighbor.kind === 'splitter') return neighbor.dir === side ? 1 : -1;
     if (neighbor.kind === 'merger') return mergerInputs(neighbor.dir, neighbor.shape).includes(opposite(side)) ? 1 : -1;
+    if (neighbor.kind === 'door') return neighbor.side === side ? 1 : -1; // une porte, vers le dehors
     return neighbor.kind === 'drill' ? -1 : 1;
   }
-  // Au sous-sol, toute case libre peut recevoir un tapis (même sous l'eau).
-  return layer === 'under' || isBuildable(game.map, cellIndex(nx, ny)) ? 0 : -1;
+  // Au sous-sol, toute case libre peut recevoir un tapis (même sous l'eau) ; dans une usine,
+  // toute case libre sauf le mur.
+  if (layer === 'under') return 0;
+  if (isInteriorLayer(layer)) return isWall(nx, ny) ? -1 : 0;
+  return isBuildable(game.map, cellIndex(nx, ny)) ? 0 : -1;
 }
 
 /**

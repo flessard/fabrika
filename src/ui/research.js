@@ -10,7 +10,9 @@ import { RESEARCH } from '../data/research.js';
 import { itemName, t, toolName } from '../i18n/index.js';
 import { itemIconUrl } from '../render/sprites/items.js';
 import { issue } from '../sim/commands.js';
-import { creditOf, missingRequirements, researchProblem, researchReady } from '../sim/research.js';
+import { creditOf, fundsOf, missingRequirements, researchProblem, researchReady } from '../sim/research.js';
+import { isStockItem, stockOf } from '../world/inventory.js';
+import { RESEARCH as TREE } from '../data/research.js';
 import { game, ui } from '../state.js';
 import { playSound } from '../audio/sounds.js';
 import { showToast } from './hud.js';
@@ -104,10 +106,17 @@ function render() {
   drawLinks();
 }
 
-/** Les items livrés qu'on peut dépenser. */
+/**
+ * Ce qu'on peut dépenser : les items livrés, et les objets de l'inventaire (plaques de
+ * fer…) qui servent aussi à la recherche.
+ */
 function bankHtml() {
-  const items = Object.keys(game.credits).filter((item) => creditOf(item) > 0);
-  const chips = items.map((item) => `<span class="rs-cost" title="${itemName(item)}"><img src="${itemIconUrl(item)}" alt="">${creditOf(item)}</span>`);
+  const stockUsed = [...new Set(TREE.flatMap((node) => Object.keys(node.cost ?? {})).filter(isStockItem))];
+  const items = [
+    ...Object.keys(game.credits).filter((item) => creditOf(item) > 0),
+    ...stockUsed.filter((item) => stockOf(item) > 0),
+  ];
+  const chips = items.map((item) => `<span class="rs-cost" title="${itemName(item)}"><img src="${itemIconUrl(item)}" alt="">${fundsOf(item)}</span>`);
   return `<span class="ip-muted">${t('research.bank')}</span>${chips.join('') || `<span class="ip-muted">${t('research.bank.empty')}</span>`}`;
 }
 
@@ -124,7 +133,7 @@ function nodeHtml(node) {
   else if (state === 'blocked') detail = `<span class="rs-state">${t('research.requires', { names: missingRequirements(node).map(toolName).join(', ') })}</span>`;
   else {
     detail = Object.entries(node.cost).map(([item, n]) => {
-      const have = Math.min(n, creditOf(item));
+      const have = Math.min(n, fundsOf(item));
       return `<span class="rs-cost ${have >= n ? 'ok' : ''}" title="${itemName(item)}"><img src="${itemIconUrl(item)}" alt="">${have}/${n}</span>`;
     }).join('');
   }

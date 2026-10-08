@@ -22,7 +22,8 @@
 //   setPriority  { id, priority }                   ex. ['L', 'F', 'R']
 //   toggleFilter { id, side, item }                 side relatif au flux : 'F', 'L' ou 'R'
 //   takeOutput   { id }                             met les objets de construction (tapis…) d'une machine
-//                                                   ou d'un conteneur dans l'inventaire
+//                                                   dans l'inventaire, ou tout le contenu d'un conteneur
+//   takeSlot     { id, slot }                       met un emplacement d'un conteneur dans l'inventaire
 //   research     { id }                             débloque un outil de l'arbre de recherche
 //                                                   (dépense des items livrés au dépôt)
 //   clearItem    { id }                             retire l'item d'un tapis, splitter ou groupeur
@@ -43,12 +44,13 @@ import { turnRight } from '../core/grid.js';
 import { BUILDINGS, canBePowered, isTunnel, layersOf } from '../data/buildings.js';
 import { game } from '../state.js';
 import {
-  buildingAt, buildingById, emptyBuilding, liftBuilding, placeBuilding, placementProblem, putBackBuilding, removeBuilding,
+  buildingAt, buildingById, buildingsInside, emptyBuilding, liftBuilding, placeBuilding, placementProblem, putBackBuilding, removeBuilding,
 } from '../world/buildings.js';
+import { t } from '../i18n/index.js';
 import { spawnPuff } from './particles.js';
 import { mergeProblem } from './belt.js';
 import { activeRecipeIndices, withRecipe } from '../data/recipes.js';
-import { takeStockItems } from './storage.js';
+import { takeSlots } from './storage.js';
 import { addToStock, isStockItem, refund, spend, stockProblem } from '../world/inventory.js';
 import { lockedProblem, researchProblem, unlock } from './research.js';
 
@@ -106,15 +108,29 @@ const fail = (problem = null) => ({ ok: false, problem });
 /** Copie des réglages d'un bâtiment (forme, priorités, filtres), sans partager les tableaux. */
 const cloneProps = (props = {}) => structuredClone(props);
 
+/**
+ * Les commandes de pose portent `layer` quand on bâtit dans une usine (« in:<id> ») :
+ * le bâtiment le garde dans son champ `layer` (voir world/interiors.js).
+ */
+const withLayer = (props, layer) => (layer ? { ...props, layer } : props);
+
+/** Pourquoi on ne peut pas effacer ce bâtiment, ou null. Une usine doit d'abord être vidée. */
+function eraseProblem(b) {
+  if (!b || b.kind === 'hub' || b.kind === 'door') return '';
+  if (b.kind === 'factory' && buildingsInside(b).some((inside) => inside.kind !== 'door')) return t('problem.factoryNotEmpty');
+  return null;
+}
+
 const HANDLERS = {
-  place({ building: type, x, y, dir, props }) {
+  place({ building: type, x, y, dir, props, layer = null }) {
     const def = BUILDINGS[type];
     if (!def) return fail();
+    props = withLayer(props, layer);
     // Splitter, filtre ou groupeur posé sur un tapis : il le remplace et garde son item.
-    const under = buildingAt(x, y, layersOf(type)[0]);
+    const under = buildingAt(x, y, layer ?? layersOf(type)[0]);
     const replaces = (def.kind === 'splitter' || def.kind === 'merger') && under?.kind === 'belt' && !isTunnel(under);
     const ignore = replaces ? new Set([under]) : null;
-    const problem = lockedProblem(type) ?? placementProblem(type, x, y, ignore) ?? stockProblem(type)
+    const problem = lockedProblem(type) ?? placementProblem(type, x, y, ignore, layer) ?? stockProblem(type)
       ?? mergeProblem([virtualOf(type, x, y, dir, props)], ignore);
     if (problem) return fail(problem);
 
@@ -137,13 +153,14 @@ const HANDLERS = {
     return { ok: true, result: placed, at };
   },
 
-  placeBelts({ building: type, cells }) {
+  placeBelts({ building: type, cells, layer = null }) {
     if (lockedProblem(type)) return fail(lockedProblem(type));
     const placed = [];
     for (const { x, y, dir } of cells) {
-      if (placementProblem(type, x, y) || stockProblem(type) || mergeProblem([virtualOf(type, x, y, dir)])) continue;
+      const props = withLayer({}, layer);
+      if (placementProblem(type, x, y, null, layer) || stockProblem(type) || mergeProblem([virtualOf(type, x, y, dir, props)])) continue;
       spend(type);
-      const b = placeBuilding(type, x, y, dir);
+      const b = placeBuilding(type, x, y, dir, props);
       spawnPuff((x + 0.5) * TILE, (y + 0.5) * TILE, 1);
       placed.push(b);
     }
@@ -152,7 +169,8 @@ const HANDLERS = {
 
   erase({ x, y, layer }) {
     const target = buildingAt(x, y, layer);
-    if (!target || target.kind === 'hub') return fail();
+    const problem = eraseProblem(target);
+    if (problem !== null) return fail(problem || null);
     const at = center(target);
     removeBuilding(target);
     refund(target.type);
@@ -160,7 +178,7 @@ const HANDLERS = {
   },
 
   eraseGroup({ ids }) {
-    const targets = ids.map(buildingById).filter((b) => b && b.kind !== 'hub');
+    const targets = ids.map(buildingById).filter((b) => eraseProblem(b) === null);
     if (!targets.length) return fail();
     const at = center(targets[0]);
     for (const b of targets) {
@@ -170,11 +188,12 @@ const HANDLERS = {
     return { ok: true, result: targets, at };
   },
 
-  placeGroup({ parts }) {
+  placeGroup({ parts, layer = null }) {
     for (const { building, x, y } of parts) {
-      const problem = lockedProblem(building) ?? placementProblem(building, x, y);
+      const problem = lockedProblem(building) ?? placementProblem(building, x, y, null, layer);
       if (problem) return fail(problem);
     }
+    parts = parts.map((part) => ({ ...part, props: withLayer(part.props, layer) }));
     // Une copie se paie d'un coup : il faut assez de stock pour tout le groupe.
     const counts = {};
     for (const { building } of parts) counts[building] = (counts[building] ?? 0) + 1;
@@ -196,11 +215,11 @@ const HANDLERS = {
 
   moveGroup({ moves }) {
     const group = moves.map(({ id }) => buildingById(id));
-    if (group.some((b) => !b || b.kind === 'hub')) return fail();
+    if (group.some((b) => !b || b.kind === 'hub' || b.kind === 'door')) return fail();
     // On retire le groupe : les cases qu'il quitte sont libres pour lui-même.
     for (const b of group) liftBuilding(b);
-    const virtuals = moves.map(({ x, y, dir }, i) => virtualOf(group[i].type, x, y, dir, { shape: group[i].shape, outputOpen: group[i].outputOpen }));
-    const problem = moves.map(({ x, y }, i) => placementProblem(group[i].type, x, y)).find(Boolean) ?? mergeProblem(virtuals);
+    const virtuals = moves.map(({ x, y, dir }, i) => virtualOf(group[i].type, x, y, dir, withLayer({ shape: group[i].shape, outputOpen: group[i].outputOpen }, group[i].layer)));
+    const problem = moves.map(({ x, y }, i) => placementProblem(group[i].type, x, y, null, group[i].layer)).find(Boolean) ?? mergeProblem(virtuals);
     if (problem) {
       for (const b of group) putBackBuilding(b); // rien ne bouge
       return fail(problem);
@@ -266,12 +285,20 @@ const HANDLERS = {
     const b = buildingById(id);
     if (!b) return fail();
     let taken;
-    if (b.slots) taken = takeStockItems(b);
+    if (b.slots) taken = takeSlots(b); // un conteneur : tout son contenu, quel que soit l'item
     else {
       taken = b.outputs?.filter(isStockItem) ?? [];
       b.outputs = b.outputs?.filter((item) => !isStockItem(item));
     }
     if (!taken.length) return fail();
+    for (const item of taken) addToStock(item);
+    return { ok: true, result: taken.length, at: center(b) };
+  },
+
+  takeSlot({ id, slot }) {
+    const b = buildingById(id);
+    if (!b?.slots?.[slot]) return fail();
+    const taken = takeSlots(b, slot);
     for (const item of taken) addToStock(item);
     return { ok: true, result: taken.length, at: center(b) };
   },

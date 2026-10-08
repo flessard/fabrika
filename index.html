@@ -26,7 +26,7 @@
     <!-- Commande du niveau en cours : une ligne par ressource (voir src/ui/hud.js). -->
     <div id="order" class="order"></div>
     <!-- Inventaire : les objets de construction en stock (voir src/world/inventory.js). -->
-    <div id="inventory" class="inventory"></div>
+    <div id="inventory" class="inventory" role="button" tabindex="0" data-i18n-title="inventory.open"></div>
   </div>
 
   <!-- Menu Échap : sauvegarde, son, langue, multijoueur, aide (voir src/ui/pauseMenu.js). -->
@@ -83,6 +83,26 @@
         <div class="help" data-i18n-html="hud.help"></div>
         <button id="pBack" type="button" class="title-btn"><span data-i18n="title.back"></span></button>
       </div>
+    </div>
+  </div>
+
+  <!-- Bandeau quand on est dans une usine (voir src/ui/factoryView.js). -->
+  <div id="insideBar" class="panel" hidden>
+    <b id="insideTitle"></b>
+    <span class="inside-hint" data-i18n-html="inside.hint" data-i18n-title="inside.hint.long"></span>
+    <button id="insideExit" type="button" data-i18n="inside.exit"></button>
+  </div>
+
+  <!-- Infobulle partagée (voir src/ui/tooltip.js). -->
+  <div id="tooltip" class="tooltip panel" hidden></div>
+
+  <!-- Fenêtre de l'inventaire (voir src/ui/inventoryWindow.js). -->
+  <div id="inventoryWindow" hidden>
+    <div class="inv-card panel">
+      <div class="pause-head"><b data-i18n="inventory.title"></b><button id="invClose" type="button" class="rs-close" data-i18n-aria="research.close">×</button></div>
+      <p class="rs-intro" data-i18n="inventory.intro"></p>
+      <div id="invSlots"></div>
+      <div id="invCosts" class="inv-costs"></div>
     </div>
   </div>
 

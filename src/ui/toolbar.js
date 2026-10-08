@@ -11,6 +11,7 @@ import { cancelPlacing, clearSelection, rotatePlacing } from '../input/selection
 import { on } from '../core/events.js';
 import { t, toolName } from '../i18n/index.js';
 import { stockOf } from '../world/inventory.js';
+import { isInteriorLayer } from '../world/interiors.js';
 import { toolUnlocked } from '../sim/research.js';
 import { openResearch } from './research.js';
 
@@ -127,7 +128,7 @@ const SLOTS = [
 /** Familles de bâtiments (l'ordre du plateau est celui de la liste). */
 const GROUPS = [
   { id: 'logistics', key: '5', tools: ['splitter', 'smartSplitter', 'filter', 'merger', 'tunnel'] },
-  { id: 'production', key: '6', tools: ['drill', 'furnace', 'press', 'assembler'] },
+  { id: 'production', key: '6', tools: ['drill', 'furnace', 'press', 'assembler', 'factory'] },
   { id: 'storage', key: '7', tools: ['container', 'dump'] },
 ];
 
@@ -300,18 +301,30 @@ function showLocks() {
  * s'assombrit et seuls les outils qui y servent restent actifs.
  */
 export function toggleLayer() {
+  if (isInteriorLayer(ui.layer)) return playSound('deny'); // pas de sous-sol dans une usine
+  switchLayer(ui.layer === 'surface' ? 'under' : 'surface');
+}
+
+/**
+ * Change la couche regardée (surface, sous-sol, ou intérieur d'une usine « in:<id> ») :
+ * abandonne ce qui était en cours, et ne garde actifs que les outils qui y servent.
+ */
+export function switchLayer(layer) {
   playSound('click');
   cancelPlacing();
   clearSelection();
   closeTray();
   ui.selected = null;
-  ui.layer = ui.layer === 'surface' ? 'under' : 'surface';
-  document.body.classList.toggle('underground', ui.layer === 'under');
-  document.getElementById('tool-layer').setAttribute('aria-pressed', String(ui.layer === 'under'));
+  ui.layer = layer;
+  document.body.classList.toggle('underground', layer === 'under');
+  document.body.classList.toggle('inside', isInteriorLayer(layer));
+  const layerButton = document.getElementById('tool-layer');
+  layerButton.setAttribute('aria-pressed', String(layer === 'under'));
+  layerButton.classList.toggle('unavailable', isInteriorLayer(layer)); // pas de sous-sol dans une usine
   for (const button of document.querySelectorAll('.tool[data-tool]')) {
-    button.classList.toggle('unavailable', !toolWorksOn(button.dataset.tool, ui.layer));
+    button.classList.toggle('unavailable', !toolWorksOn(button.dataset.tool, layer));
   }
-  if (!toolWorksOn(ui.tool, ui.layer)) setTool('hand');
+  if (!toolWorksOn(ui.tool, layer)) setTool('hand');
   showGroups();
 }
 

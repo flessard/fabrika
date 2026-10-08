@@ -17,6 +17,9 @@ const STEP_BY_KIND = {
   hub: stepHub,
   storage: stepStorage,
   dump: stepDump,
+  // L'usine et ses portes ne font rien d'elles-mêmes : les items passent au travers (sim/transfer.js).
+  factory: () => {},
+  door: () => {},
 };
 
 export function stepSimulation(dt) {

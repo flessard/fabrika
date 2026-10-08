@@ -1,5 +1,5 @@
 // Poser, retrouver et enlever des bâtiments sur la grille.
-import { BUILDINGS, layersOf } from '../data/buildings.js';
+import { BUILDINGS, layersOf, layersOfBuilding } from '../data/buildings.js';
 import { emptyFilters } from '../data/splitterShapes.js';
 import { buildingName, t } from '../i18n/index.js';
 import { revealAround } from './fog.js';
@@ -8,11 +8,20 @@ import { TILE } from '../config.js';
 import { game } from '../state.js';
 import { ORE_ITEM, terrainProblem } from './terrain.js';
 import { spawnPuff } from '../sim/particles.js';
+import {
+  ALL_DOORS, doorCell, factoryIdOf, interiorCells, interiorLayer, isInteriorLayer, isWall, layerInBounds, layerIndex,
+} from './interiors.js';
 
-const gridOf = (layer) => (layer === 'under' ? game.under : game.grid);
+/** La grille d'une couche : la carte, le sous-sol, ou l'intérieur d'une usine (« in:<id> »). */
+const gridOf = (layer) => {
+  if (layer === 'under') return game.under;
+  if (isInteriorLayer(layer)) return interiorCells(factoryIdOf(layer));
+  return game.grid;
+};
 
-/** Bâtiment qui occupe la case (x, y) sur la couche donnée (surface ou sous-sol), ou null. */
-export const buildingAt = (x, y, layer = 'surface') => (inBounds(x, y) ? gridOf(layer)[cellIndex(x, y)] : null);
+/** Bâtiment qui occupe la case (x, y) sur la couche donnée (surface, sous-sol ou intérieur), ou null. */
+export const buildingAt = (x, y, layer = 'surface') =>
+  (layerInBounds(layer, x, y) ? gridOf(layer)[layerIndex(layer, x, y)] ?? null : null);
 
 /** Toutes les cases couvertes par un bâtiment de taille w × h posé en (x, y). */
 function* footprint(x, y, w, h) {
@@ -31,8 +40,10 @@ export function anchorFor(type, cell) {
  * « déjà occupé (Four) »…), ou null si rien ne l'empêche. `ignore` : bâtiments qui ne
  * comptent pas comme des obstacles (ceux qu'on déplace, le tapis qu'un splitter remplace).
  * Chaque couche qu'il occupe doit être libre. Le sous-sol passe sous tout, même l'eau.
+ * `layer` : l'intérieur d'une usine où on le pose (« in:<id> »), sinon les couches de son type.
  */
-export function placementProblem(type, x, y, ignore = null) {
+export function placementProblem(type, x, y, ignore = null, layer = null) {
+  if (isInteriorLayer(layer)) return interiorProblem(type, x, y, ignore, layer);
   const { w, h, kind } = BUILDINGS[type];
   const layers = layersOf(type);
   let onOre = false;
@@ -53,8 +64,26 @@ export function placementProblem(type, x, y, ignore = null) {
   return null;
 }
 
+/**
+ * Dans une usine : pas de terrain ni de brouillard, mais un mur tout autour (où sont les
+ * portes), et seulement des bâtiments de transformation (voir TOOLS, inside).
+ */
+function interiorProblem(type, x, y, ignore, layer) {
+  const { w, h, kind } = BUILDINGS[type];
+  if (kind === 'drill' || kind === 'factory' || kind === 'hub' || BUILDINGS[type].base || BUILDINGS[type].tunnel) {
+    return t('problem.notInside', { name: buildingName(type) });
+  }
+  const grid = gridOf(layer);
+  for (const [cx, cy] of footprint(x, y, w, h)) {
+    if (!layerInBounds(layer, cx, cy) || isWall(cx, cy)) return t('problem.wall');
+    const other = grid[layerIndex(layer, cx, cy)];
+    if (other && !ignore?.has(other)) return t('problem.taken', { name: buildingName(other.type) });
+  }
+  return null;
+}
+
 /** Vrai si un bâtiment de ce type peut être posé avec son coin haut-gauche en (x, y). */
-export const canPlace = (type, x, y, ignore = null) => placementProblem(type, x, y, ignore) === null;
+export const canPlace = (type, x, y, ignore = null, layer = null) => placementProblem(type, x, y, ignore, layer) === null;
 
 /** Le bâtiment qui a cet identifiant, s'il est toujours sur la carte. */
 export const buildingById = (id) => game.byId.get(id) ?? null;
@@ -132,17 +161,28 @@ function createBuilding(type, x, y, dir, id = game.nextId++) {
   return b;
 }
 
-/** Pose un bâtiment (sans vérifier la place : appeler canPlace avant). */
+/**
+ * Pose un bâtiment (sans vérifier la place : appeler canPlace avant). Une usine est posée
+ * avec son intérieur vide et ses 16 portes.
+ */
 export function placeBuilding(type, x, y, dir = RIGHT, props = {}) {
-  return occupy(Object.assign(createBuilding(type, x, y, dir), props));
+  const b = occupy(Object.assign(createBuilding(type, x, y, dir), props));
+  if (b.kind === 'factory') {
+    for (const { side, k } of ALL_DOORS) {
+      const [dx, dy] = doorCell(side, k);
+      occupy(Object.assign(createBuilding('door', dx, dy, side), { layer: interiorLayer(b), factory: b.id, side, k }));
+    }
+  }
+  return b;
 }
 
 function occupy(b) {
   game.buildings.push(b);
   game.byId.set(b.id, b);
-  revealAround(b); // chaque bâtiment éclaire autour de lui
-  for (const layer of layersOf(b.type)) {
-    for (const [cx, cy] of footprint(b.x, b.y, b.w, b.h)) gridOf(layer)[cellIndex(cx, cy)] = b;
+  if (b.kind === 'factory') interiorCells(b.id); // sa grille intérieure existe dès la pose
+  if (!b.layer) revealAround(b); // chaque bâtiment éclaire autour de lui (pas ceux des usines)
+  for (const layer of layersOfBuilding(b)) {
+    for (const [cx, cy] of footprint(b.x, b.y, b.w, b.h)) gridOf(layer)[layerIndex(layer, cx, cy)] = b;
   }
   return b;
 }
@@ -151,10 +191,13 @@ function occupy(b) {
 export function liftBuilding(b) {
   game.buildings.splice(game.buildings.indexOf(b), 1);
   game.byId.delete(b.id);
-  for (const layer of layersOf(b.type)) {
-    for (const [cx, cy] of footprint(b.x, b.y, b.w, b.h)) gridOf(layer)[cellIndex(cx, cy)] = null;
+  for (const layer of layersOfBuilding(b)) {
+    for (const [cx, cy] of footprint(b.x, b.y, b.w, b.h)) gridOf(layer)[layerIndex(layer, cx, cy)] = null;
   }
 }
+
+/** Les bâtiments posés dans une usine (portes comprises). */
+export const buildingsInside = (factory) => game.buildings.filter((b) => b.layer === interiorLayer(factory));
 
 /**
  * Vide un bâtiment : plus d'item, de stock ni de fabrication en cours, comme s'il
@@ -176,11 +219,18 @@ export function putBackBuilding(b) {
 /** Remet sur la carte un bâtiment lu dans une sauvegarde, tel quel (voir world/save.js). */
 export const restoreBuilding = (saved) => occupy(saved);
 
-/** Enlève un bâtiment. Le dépôt ne peut pas être enlevé. */
+/**
+ * Enlève un bâtiment. Le dépôt et les portes ne peuvent pas être enlevés. Une usine part
+ * avec ses portes et son intérieur (il doit être vide : voir sim/commands.js).
+ */
 export function removeBuilding(b) {
-  if (!b || b.kind === 'hub') return;
+  if (!b || b.kind === 'hub' || b.kind === 'door') return;
   liftBuilding(b);
-  spawnPuff((b.x + b.w / 2) * TILE, (b.y + b.h / 2) * TILE, 6);
+  if (b.kind === 'factory') {
+    for (const inside of buildingsInside(b)) liftBuilding(inside);
+    game.interiors.delete(b.id);
+  }
+  if (!b.layer) spawnPuff((b.x + b.w / 2) * TILE, (b.y + b.h / 2) * TILE, 6);
 }
 
 /**

@@ -12,6 +12,8 @@ import { isConveyor } from '../sim/transfer.js';
 import { currentCtx, drawOn, rect, withAlpha } from './pen.js';
 import { bakeTerrain } from './terrainImage.js';
 import { bakeFog } from './fogImage.js';
+import { interiorImage } from './interiorImage.js';
+import { isInteriorLayer } from '../world/interiors.js';
 import { fogVersion } from '../world/fog.js';
 import { cameraOrigin, carriedItemPosition, conveyorFrame, machinePorts, refusalMarks, selectionOutline, selectionOverlay, cursorPreview, isVisible, visibleCells, waterSparkles } from './scene.js';
 import {
@@ -48,7 +50,10 @@ export function createCanvasRenderer(canvas) {
       const frame = beltFrame(time);
 
       rect(0, 0, view.width, view.height, P.black);
-      ctx.drawImage(terrainImage, -ox - MAP_PADDING, -oy - MAP_PADDING);
+      // Dans une usine : son plancher au lieu du terrain, et pas de brouillard.
+      const inside = isInteriorLayer(ui.layer);
+      if (inside) ctx.drawImage(interiorImage(), -ox, -oy);
+      else ctx.drawImage(terrainImage, -ox - MAP_PADDING, -oy - MAP_PADDING);
 
       const cells = visibleCells(ox, oy);
       for (const [x, y] of waterSparkles(cells, time)) rect(x - ox, y - oy, 2, 1, P.white);
@@ -112,7 +117,7 @@ export function createCanvasRenderer(canvas) {
         fogImage = bakeFog(4);
         fogDrawn = fogVersion;
       }
-      ctx.drawImage(fogImage, -ox, -oy, MAP_W * TILE, MAP_H * TILE);
+      if (!inside) ctx.drawImage(fogImage, -ox, -oy, MAP_W * TILE, MAP_H * TILE);
 
       const selected = selectionOutline();
       if (selected) strokeOutline(selected, ox, oy);

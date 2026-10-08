@@ -4,6 +4,7 @@
 // possible à l'autre, en commençant par la meilleure suggestion.
 // Sur une case vide, F change la forme et R tourne le bâtiment.
 import { ui } from '../state.js';
+import { isInteriorLayer } from '../world/interiors.js';
 import { nextShapeId } from '../data/splitterShapes.js';
 import { nextMergerShapeId } from '../data/mergerShapes.js';
 import { baseType, isTunnel, typeForTool } from '../data/buildings.js';
@@ -65,7 +66,7 @@ export function shapeChoice(toolId, cell) {
     return { dir, shape: option ? option.id : tool.preferred, ok: !!option, onBelt: true, options, index };
   }
   const type = typeForTool(toolId, ui.layer);
-  return { dir: ui.dir, shape: tool.preferred, ok: !!type && canPlace(type, cell.x, cell.y), onBelt: false, options: [], index: 0 };
+  return { dir: ui.dir, shape: tool.preferred, ok: !!type && canPlace(type, cell.x, cell.y, null, isInteriorLayer(ui.layer) ? ui.layer : null), onBelt: false, options: [], index: 0 };
 }
 
 /** Retenir la forme choisie pour le prochain bâtiment du même type. */

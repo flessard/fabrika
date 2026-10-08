@@ -5,13 +5,16 @@
 // de sections (titre + contenu), et l'affichage ne fait que les dessiner.
 // Une nouvelle machine de kind 'crafter' (data/buildings.js) a donc sa fiche sans rien ajouter.
 import { BELT_SPEED, TILE } from '../config.js';
-import { RIGHT, LEFT, turnLeft, turnRight } from '../core/grid.js';
+import { DOWN, LEFT, RIGHT, UP, turnLeft, turnRight } from '../core/grid.js';
+import { doorRoles } from '../sim/factory.js';
+import { buildingsInside } from '../world/buildings.js';
+import { enterFactory, factoryNumber } from './factoryView.js';
 import { BUILDINGS, inputCapacity, isOn, isUnderground, outputCapacity } from '../data/buildings.js';
 import { ITEMS } from '../data/items.js';
 import { filterFor, priorityOrder, raisePriority, relativeSide, splitterOutputs } from '../data/splitterShapes.js';
 import { mergerInputs } from '../data/mergerShapes.js';
 import { on } from '../core/events.js';
-import { buildingName, decimal, itemName, shapeLabel, t } from '../i18n/index.js';
+import { buildingName, decimal, itemName, itemPlural, shapeLabel, t } from '../i18n/index.js';
 import { isConveyor } from '../sim/transfer.js';
 import { game, ui, view } from '../state.js';
 import { flowSummary } from '../sim/flow.js';
@@ -24,6 +27,7 @@ import { stackSize } from '../sim/storage.js';
 import { refusal } from '../render/scene.js';
 import { refusalText } from './hint.js';
 import { activeRecipeIndices, activeRecipes, ingredientsOf, recipesOf, yieldOf } from '../data/recipes.js';
+import { hideTooltip, itemDescription, showTooltip, tipAmount, tipHead } from './tooltip.js';
 import { beltColors, drawBelt, drawFilter, drawMerger, drawSmartSplitter, drawSplitter, drawTunnel, drawUnderBelt, filterKey } from '../render/sprites/belts.js';
 import { itemIconUrl } from '../render/sprites/items.js';
 import { machineSprite } from '../render/sprites/machines.js';
@@ -44,6 +48,9 @@ export function initInfoPanel() {
     const b = shownFor;
     const raise = e.target.closest('[data-raise]');
     if (e.target.closest('[data-take]') && b) issue({ type: 'takeOutput', id: b.id });
+    const slot = e.target.closest('[data-take-slot]');
+    if (slot && b?.slots) issue({ type: 'takeSlot', id: b.id, slot: Number(slot.dataset.takeSlot) });
+    if (e.target.closest('[data-enter]') && b?.kind === 'factory') return enterFactory(b);
     if (e.target.closest('[data-clear]') && b?.item) issue({ type: 'clearItem', id: b.id });
     if (e.target.closest('[data-power]') && b) issue({ type: 'setEnabled', ids: [b.id], enabled: !isOn(b) });
     const recipe = e.target.closest('[data-recipe]');
@@ -66,10 +73,16 @@ export function initInfoPanel() {
     const chip = e.target.closest('[data-filter-side]');
     if (chip) showChipTooltip(chip);
     else tooltip.hidden = true;
+    // Détail d'une recette : au survol des boutons de recette et de la recette en cours.
+    const recipe = e.target.closest('[data-recipe], [data-recipe-tip]');
+    const index = recipe && Number(recipe.dataset.recipe ?? recipe.dataset.recipeTip);
+    if (recipe && shownFor?.kind === 'crafter') showTooltip(recipeTipHtml(shownFor, index), e.clientX, e.clientY);
+    else hideTooltip();
   });
   panel.addEventListener('pointerleave', () => {
     tooltip.hidden = true;
     tipFor = null;
+    hideTooltip();
   });
   // Nouvelle langue : la fiche ouverte est reconstruite (bouton de fermeture compris).
   on('lang:changed', () => { shownFor = null; });
@@ -109,6 +122,7 @@ function renderChipTooltip() {
 export function closeInfoPanel() {
   ui.selected = null;
   tooltip.hidden = true;
+  hideTooltip();
 }
 
 /** À appeler à chaque image. */
@@ -136,6 +150,7 @@ export function updateInfoPanel() {
  *   { title, subtitle?, status: { label, tone: 'ok' | 'warn' | 'idle' }, sections: [{ label, aside?, html }] }
  */
 function describe(b) {
+  if (b.kind === 'factory') return describeFactory(b);
   if (isConveyor(b)) return describeConveyor(b);
   if (b.kind === 'storage') return describeStorage(b);
   if (b.kind === 'dump') return describeDump(b);
@@ -148,13 +163,15 @@ function describeStorage(b) {
   const status = used === b.slots.length
     ? { label: t('panel.storage.full'), tone: 'warn' }
     : { label: t('panel.storage.used', { n: used, total: b.slots.length }), tone: used ? 'ok' : 'idle' };
-  const slots = b.slots.map((slot) => (slot
-    ? `<div class="ip-slot" title="${itemName(slot.item)}"><img class="ip-item" src="${itemIconUrl(slot.item)}" alt="">
-         <b${slot.count >= stackSize(slot.item) ? ' class="full"' : ''}>${slot.count}</b><span>/${stackSize(slot.item)}</span></div>`
+  // Chaque emplacement plein est un bouton : un clic le met dans l'inventaire.
+  const slots = b.slots.map((slot, i) => (slot
+    ? `<button type="button" class="ip-slot" data-take-slot="${i}" title="${t('panel.storage.takeSlot', { n: slot.count, item: slot.count > 1 ? itemPlural(slot.item) : itemName(slot.item) })}">
+         <img class="ip-item" src="${itemIconUrl(slot.item)}" alt="${itemName(slot.item)}">
+         <b${slot.count >= stackSize(slot.item) ? ' class="full"' : ''}>${slot.count}</b><span>/${stackSize(slot.item)}</span></button>`
     : '<div class="ip-slot empty"></div>')).join('');
-  const takeable = b.slots.reduce((n, s) => n + (s && isStockItem(s.item) ? s.count : 0), 0);
+  const takeable = b.slots.reduce((n, s) => n + (s ? s.count : 0), 0);
   const take = takeable
-    ? `<button type="button" class="ip-take" data-take title="${t('panel.take.title')}">${t('panel.take', { n: takeable })}</button>` : '';
+    ? `<button type="button" class="ip-take" data-take title="${t('panel.storage.takeAll.title')}">${t('panel.storage.takeAll', { n: takeable })}</button>` : '';
   return {
     title: buildingName(b.type),
     status,
@@ -164,6 +181,39 @@ function describeStorage(b) {
         <button type="button" class="ip-toggle" data-output aria-pressed="${b.outputOpen}">
           ${t(b.outputOpen ? 'panel.storage.open' : 'panel.storage.closed')}
         </button>` },
+    ],
+  };
+}
+
+/**
+ * Usine : ses portes (lesquelles sont des entrées, lesquelles des sorties), ce qu'il y a
+ * dedans, et le bouton pour y entrer.
+ */
+function describeFactory(b) {
+  const roles = doorRoles(b);
+  const ins = roles.filter((d) => d.role === 'in').length;
+  const outs = roles.filter((d) => d.role === 'out').length;
+  const inside = buildingsInside(b).filter((x) => x.kind !== 'door').length;
+  // Plan des 16 portes : un carré par porte, autour d'un carré qui figure l'usine.
+  const square = (side, k) => {
+    const role = roles.find((d) => d.side === side && d.k === k).role;
+    return `<i class="door ${role ?? 'none'}" title="${t(role ? `door.${role}` : 'door.none')}"></i>`;
+  };
+  const row = (side) => [0, 1, 2, 3].map((k) => square(side, k)).join('');
+  const plan = `<div class="ip-doors">
+      <span></span><span class="h">${row(UP)}</span><span></span>
+      <span class="v">${row(LEFT)}</span><span class="core">${inside}</span><span class="v">${row(RIGHT)}</span>
+      <span></span><span class="h">${row(DOWN)}</span><span></span>
+    </div>`;
+  return {
+    title: buildingName(b.type),
+    subtitle: t('inside.number', { n: factoryNumber(b) }),
+    status: { label: t('panel.factory.doors', { ins, outs }), tone: ins || outs ? 'ok' : 'idle' },
+    sections: [
+      { label: t('panel.factory.doorsLabel'), aside: t('panel.factory.doorsAside'), html: plan },
+      { label: t('panel.factory.inside'), html: `
+        <div class="ip-row">${t('panel.factory.count', { n: inside })}</div>
+        <button type="button" class="ip-take" data-enter>${t('panel.factory.enter')}</button>` },
     ],
   };
 }
@@ -194,7 +244,7 @@ function describeMachine(b) {
   if (b.kind === 'drill') {
     making = recipeHtml(null, b.ore);
   } else if (busy && b.currentRecipe != null) {
-    making = recipeRowHtml(recipesOf(b.type)[b.currentRecipe]);
+    making = `<span class="ip-row" data-recipe-tip="${b.currentRecipe}">${recipeRowHtml(recipesOf(b.type)[b.currentRecipe])}</span>`;
   } else {
     const active = activeRecipes(b);
     making = active.length
@@ -341,12 +391,46 @@ function recipeSection(b) {
     label: t('panel.recipeChoice'),
     aside: t('panel.recipeChoice.aside'),
     html: `<div class="ip-recipes">${recipesOf(b.type).map((recipe, i) => `
-      <button type="button" class="ip-recipe" data-recipe="${i}" aria-pressed="${active.has(i)}"
-        title="${ingredientsOf(recipe).map(itemName).join(' + ')} → ${yieldOf(recipe)} ${itemName(recipe.out)}">
+      <button type="button" class="ip-recipe" data-recipe="${i}" aria-pressed="${active.has(i)}">
         ${recipeRowHtml(recipe)}
       </button>`).join('')}</div>`,
   };
 }
+/**
+ * Infobulle d'une recette : ce qui entre et ce qui sort, en quelle quantité, la durée,
+ * le débit à plein régime, et ce que fera le clic (activer, désactiver, et quelle autre
+ * recette sera désactivée parce qu'elle utilise le même ingrédient).
+ */
+function recipeTipHtml(b, index) {
+  const recipe = recipesOf(b.type)[index];
+  if (!recipe) return '';
+  const time = BUILDINGS[b.type].time;
+  const perMin = 60 / time;
+  const out = yieldOf(recipe);
+  const ins = Object.entries(recipe.in);
+  const active = activeRecipeIndices(b).includes(index);
+
+  const rates = [
+    ...ins.map(([item, n]) => t('recipe.tip.consumes', { n: decimal(n * perMin), item: itemPlural(item) })),
+    t('recipe.tip.produces', { n: decimal(out * perMin), item: itemPlural(recipe.out) }),
+  ];
+  // Les recettes actives qui partagent un ingrédient : elles s'éteindront si on allume celle-ci.
+  const conflicts = active ? [] : activeRecipes(b)
+    .filter(({ recipe: other }) => ingredientsOf(other).some((item) => recipe.in[item]))
+    .map(({ recipe: other }) => itemName(other.out));
+  const desc = itemDescription(recipe.out);
+
+  return `
+    ${tipHead(recipe.out, out > 1 ? `×${out}` : '')}
+    <div class="tip-recipe">${ins.map(([item, n]) => tipAmount(item, n)).join('<span class="ip-sep">+</span>')}
+      <span class="ip-sep">→</span>${tipAmount(recipe.out, out)}</div>
+    <div><span class="ip-muted">${t('recipe.tip.time')}</span> ${t('recipe.tip.seconds', { n: decimal(time) })}</div>
+    <div><span class="ip-muted">${t('recipe.tip.fullSpeed')}</span> ${rates.join(' · ')}</div>
+    ${desc ? `<p>${desc}</p>` : ''}
+    <div class="${active ? 'tip-on' : 'tip-off'}">${t(active ? 'recipe.tip.active' : 'recipe.tip.inactive')}</div>
+    ${conflicts.length ? `<div class="tip-warn">${t('recipe.tip.replaces', { names: conflicts.join(', ') })}</div>` : ''}`;
+}
+
 const recipeHtml = (from, to) => `${from ? `${icon(from)}<span class="ip-sep">→</span>` : ''}${icon(to)}`;
 const bar = (fraction) => `<div class="ip-bar"><i style="width:${Math.round(fraction * 100)}%"></i></div>`;
 const gauge = (fraction) => `<div class="ip-gauge"><i style="width:${Math.round(Math.min(1, fraction) * 100)}%"></i></div>`;

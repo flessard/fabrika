@@ -24,6 +24,8 @@ export const game = {
   particles: [],
   /** Nombre d'items livrés au dépôt depuis le début, par type d'item. */
   delivered: {},
+  /** Intérieur de chaque usine : id de l'usine → grille de 32 × 32 (voir world/interiors.js). */
+  interiors: new Map(),
   /** Inventaire de l'équipe : objets de construction en stock (voir world/inventory.js). */
   inventory: {},
   /** Outils débloqués dans l'arbre de recherche (voir data/research.js). */

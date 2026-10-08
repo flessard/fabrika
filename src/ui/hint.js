@@ -8,8 +8,9 @@ import { ui } from '../state.js';
 import { anchorFor, buildingAt, placementProblem } from '../world/buildings.js';
 import { hasShapes, shapeChoice, shapeName } from '../input/shapePicker.js';
 import { placementAt, placementProblems } from '../input/selection.js';
-import { toolType } from '../input/actions.js';
+import { toolType, insideLayer } from '../input/actions.js';
 import { affordable, stockProblem } from '../world/inventory.js';
+import { currentLevel } from '../sim/levels.js';
 import { mergeProblem } from '../sim/belt.js';
 import { activeRecipes, ingredientsOf, yieldOf } from '../data/recipes.js';
 import { ITEMS } from '../data/items.js';
@@ -76,6 +77,10 @@ export function refusalText({ item, target }) {
   const params = { machine: buildingName(target.type), item: itemName(item), items: itemPlural(item) };
   if (ITEMS[item]?.waste) return t('refused.waste', params);
   if (target.kind === 'crafter') return t('refused.recipe', params);
+  if (target.kind === 'hub') {
+    const wanted = (currentLevel()?.goals ?? []).map((goal) => itemPlural(goal.item)).join(', ');
+    return t('refused.hub', { ...params, wanted });
+  }
   return t('refused.other', params);
 }
 
@@ -101,7 +106,10 @@ function machineHint(b) {
 }
 
 /** Un bâtiment tel qu'il serait posé (pour vérifier les jonctions). */
-const virtualOf = (type, x, y, dir, props = {}) => ({ type, kind: BUILDINGS[type].kind, x, y, w: BUILDINGS[type].w, h: BUILDINGS[type].h, dir, ...props });
+const virtualOf = (type, x, y, dir, props = {}) => ({
+  type, kind: BUILDINGS[type].kind, x, y, w: BUILDINGS[type].w, h: BUILDINGS[type].h, dir, ...props,
+  ...(insideLayer() ? { layer: insideLayer() } : {}),
+});
 
 /** Ex. « Plaque de fer + Fil de cuivre → 2 Tapis », « Lingot de fer → Plaque de fer » */
 const recipeText = (recipe) =>
@@ -141,7 +149,7 @@ function beltPlanHint({ type, cells }) {
   const placed = [];
   const spots = cells.map(({ x, y, dir }) => {
     const v = virtualOf(type, x, y, dir);
-    const problem = placementProblem(type, x, y) ?? (left > 0 ? null : stockProblem(type)) ?? mergeProblem([...placed, v]);
+    const problem = placementProblem(type, x, y, null, insideLayer()) ?? (left > 0 ? null : stockProblem(type)) ?? mergeProblem([...placed, v]);
     if (!problem) {
       left--;
       placed.push(v);
@@ -160,7 +168,7 @@ function buildProblemHint() {
   const type = toolType();
   if (!type) return null; // l'outil ne sert pas ici : la bulle du sous-sol le dit déjà
   const { x, y } = anchorFor(type, ui.hover);
-  const problem = placementProblem(type, x, y) ?? stockProblem(type) ?? mergeProblem([virtualOf(type, x, y, ui.dir)]);
+  const problem = placementProblem(type, x, y, null, insideLayer()) ?? stockProblem(type) ?? mergeProblem([virtualOf(type, x, y, ui.dir)]);
   return problem && warning(t('hint.cannotPlace', { name: buildingName(type).toLowerCase(), problem }));
 }
 

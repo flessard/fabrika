@@ -16,6 +16,10 @@ import { beltArms } from '../sim/belt.js';
 import { isConveyor } from '../sim/transfer.js';
 import { makeCanvas } from './pen.js';
 import { bakeTerrain } from './terrainImage.js';
+import { interiorImage } from './interiorImage.js';
+import { isInteriorLayer } from '../world/interiors.js';
+import { buildingById } from '../world/buildings.js';
+import { doorRole } from '../sim/factory.js';
 import { bakeFog } from './fogImage.js';
 import { fogVersion } from '../world/fog.js';
 import { cameraOrigin, carriedItemPosition, conveyorFrame, machinePorts, refusalMarks, selectionOutline, selectionOverlay, cursorPreview, isVisible, visibleCells, waterSparkles } from './scene.js';
@@ -59,6 +63,8 @@ export async function createPixiRenderer(canvas) {
 
   const terrain = new Sprite();
   terrain.position.set(-MAP_PADDING, -MAP_PADDING);
+  const floor = new Sprite();            // plancher d'une usine, à la place du terrain quand on est dedans
+  floor.visible = false;
   const overlay = new Graphics();        // reflets de l'eau, grille
   const belts = new SpritePool();
   const itemShadows = new SpritePool();
@@ -83,7 +89,7 @@ export async function createPixiRenderer(canvas) {
   const cursor = new Graphics();
 
   world.addChild(
-    terrain, overlay, belts.layer, itemShadows.layer, items.layer, lids.layer,
+    terrain, floor, overlay, belts.layer, itemShadows.layer, items.layer, lids.layer,
     machines.layer, ports.layer, effects, icons.layer,
     underShade, underBelts.layer, underItems.layer, underLids.layer, alerts.layer, fog, highlights.layer, highlightOutline, ghosts.layer, cursor,
   );
@@ -258,6 +264,14 @@ export async function createPixiRenderer(canvas) {
     }
   }
 
+  /** Voyant d'une porte d'usine : vert si c'est une entrée, orange si c'est une sortie. */
+  function drawDoorLight(door) {
+    const factory = buildingById(door.factory);
+    const role = factory && doorRole(factory, door.side, door.k);
+    if (!role) return;
+    effects.rect(door.x * TILE + 6, door.y * TILE + 6, 4, 4).fill(role === 'in' ? P.lime : P.amber);
+  }
+
   function strokeOutline(outline) {
     cursor
       .rect(outline.x * TILE + 0.5, outline.y * TILE + 0.5, outline.w * TILE - 1, outline.h * TILE - 1)
@@ -281,6 +295,12 @@ export async function createPixiRenderer(canvas) {
     render(time) {
       const { ox, oy } = cameraOrigin();
       world.position.set(-ox, -oy);
+      // Dans une usine : son plancher au lieu du terrain, et pas de brouillard.
+      const inside = isInteriorLayer(ui.layer);
+      if (inside && floor.texture === Texture.EMPTY) floor.texture = textures.fromCanvas(interiorImage());
+      floor.visible = inside;
+      terrain.visible = !inside;
+      fog.visible = !inside;
       const frame = beltFrame(time);
       const cells = visibleCells(ox, oy);
 
@@ -346,6 +366,8 @@ export async function createPixiRenderer(canvas) {
           if (b.flash > 0) effects.rect(b.x * TILE + 4, b.y * TILE + 4, 8, 6).fill({ color: P.clay, alpha: (b.flash / 0.25) * 0.6 });
         } else if (b.outputs) {
           drawProgressBars(b, time);
+        } else if (b.kind === 'door') {
+          drawDoorLight(b);
         }
       }
 

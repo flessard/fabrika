@@ -1,7 +1,8 @@
 // Caméra : quelle partie de la carte est visible, et à quel zoom.
 // La caméra s'arrête aux bords de la carte (plus une petite marge).
 import { CAMERA_MARGIN, CLIFF_HEIGHT, MAP_H, MAP_W, TILE, TOOLBAR_HEIGHT, ZOOM_MAX, ZOOM_MIN } from '../config.js';
-import { view } from '../state.js';
+import { view, ui } from '../state.js';
+import { isInteriorLayer, layerSize } from '../world/interiors.js';
 import { uiScale } from '../ui/uiScale.js';
 
 let canvas = null;
@@ -39,10 +40,13 @@ export function resizeView() {
 export function clampCamera() {
   // La palette du bas grandit avec la taille de l'interface.
   const bottomUi = Math.ceil((TOOLBAR_HEIGHT * uiScale()) / view.zoom);
+  // Dans une usine, la caméra s'arrête aux murs de son intérieur (32 × 32), sans falaise.
+  const inside = isInteriorLayer(ui.layer);
+  const { w, h } = layerSize(ui.layer);
   const minX = -CAMERA_MARGIN;
-  const maxX = MAP_W * TILE + CAMERA_MARGIN - view.width;
+  const maxX = w * TILE + CAMERA_MARGIN - view.width;
   const minY = -CAMERA_MARGIN;
-  const maxY = MAP_H * TILE + CAMERA_MARGIN + CLIFF_HEIGHT + 2 + bottomUi - view.height;
+  const maxY = h * TILE + CAMERA_MARGIN + (inside ? 0 : CLIFF_HEIGHT + 2) + bottomUi - view.height;
   // Si l'écran est plus grand que la carte, on la centre.
   view.camX = maxX < minX ? (minX + maxX) / 2 : Math.max(minX, Math.min(maxX, view.camX));
   view.camY = maxY < minY ? (minY + maxY) / 2 : Math.max(minY, Math.min(maxY, view.camY));

@@ -23,7 +23,8 @@ export function renderMinimap(ctx) {
   drawOn(ctx);
   ctx.drawImage(base, 0, 0);
   for (const b of game.buildings) {
-    // Ce qui est souterrain n'apparaît qu'en vue du sous-sol.
+    // Ce qui est souterrain n'apparaît qu'en vue du sous-sol ; ce qui est dans une usine, jamais.
+    if (b.layer) continue;
     if (isUnderground(b) && ui.layer !== 'under') continue;
     const color = isUnderground(b) ? P.clay : COLOR_BY_KIND[b.kind] ?? P.amber;
     rect(b.x * SCALE, b.y * SCALE, b.w * SCALE, b.h * SCALE, color);
