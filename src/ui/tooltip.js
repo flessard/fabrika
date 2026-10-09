@@ -13,8 +13,11 @@ export function showTooltip(html, x, y) {
   if (tip.innerHTML !== html) tip.innerHTML = html;
   tip.hidden = false;
   // Elle suit la taille de l'interface : position et taille comptées en pixels d'écran.
+  // Elle ne dépasse jamais l'écran (voir max-height dans styles/main.css) : on la met à
+  // droite du curseur, ou à gauche s'il n'y a pas la place, et on la garde dedans.
   const { w, h } = screenSize(tip);
-  placeScaled(tip, Math.max(8, Math.min(innerWidth - w - 8, x + 14)), Math.max(8, Math.min(innerHeight - h - 8, y + 14)));
+  const left = x + 14 + w > innerWidth - 8 ? x - 14 - w : x + 14;
+  placeScaled(tip, Math.max(8, Math.min(innerWidth - w - 8, left)), Math.max(8, Math.min(innerHeight - h - 8, y + 14)));
 }
 
 export function hideTooltip() {

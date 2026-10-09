@@ -63,5 +63,7 @@ export function closePause() {
 function showPage(page) {
   $('pauseMain').hidden = page !== 'main';
   $('pauseHelp').hidden = page !== 'help';
-  (page === 'main' ? $('pResume') : $('pBack')).focus();
+  // Chaque page s'ouvre en haut (sans que le focus fasse défiler jusqu'au bouton).
+  (page === 'main' ? $('pResume') : $('pBack')).focus({ preventScroll: true });
+  document.querySelector('.pause-card .win-body').scrollTop = 0;
 }

@@ -26,6 +26,7 @@
 //   takeSlot     { id, slot }                       met un emplacement d'un conteneur dans l'inventaire
 //   research     { id }                             débloque un outil de l'arbre de recherche
 //                                                   (dépense des items livrés au dépôt)
+//   emptyDump    { id }                             vide les débris d'une décharge
 //   clearItem    { id }                             retire l'item d'un tapis, splitter ou groupeur
 //                                                   (un objet de construction retourne dans l'inventaire)
 //   setStorageOutput { id, open }                   ouvre ou ferme la sortie d'un conteneur
@@ -267,6 +268,15 @@ const HANDLERS = {
     unlock(id);
     emit('research:done', { id });
     return { ok: true, result: id, at: null };
+  },
+
+  emptyDump({ id }) {
+    const b = buildingById(id);
+    if (b?.kind !== 'dump' || !b.stored) return fail();
+    b.stored = 0;
+    const at = center(b);
+    spawnPuff(at.x, at.y, 3);
+    return { ok: true, result: b, at };
   },
 
   clearItem({ id }) {

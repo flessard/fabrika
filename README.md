@@ -64,8 +64,20 @@ fiche, dit pourquoi et quoi faire. Une machine simplement pleine ne déclenche r
 n'est pas un refus. (`machineRefuses` dans `sim/machines.js`, `refusal` et
 `refusalMarks` dans `render/scene.js`, sprites dans `render/sprites/refusal.js`.)
 
+La décharge **accumule** ce qu'elle détruit : 250 débris au plus (`capacity` dans
+`data/buildings.js`). On les voit monter dans sa fosse ; pleine, un voyant rouge clignote
+et elle refuse tout (la bulle rouge apparaît sur le tapis qui bute). Le bouton
+**Vider la décharge** de sa fiche la remet à zéro (commande `emptyDump`).
+
 Réglages : `residue` sur la foreuse dans `data/buildings.js` (item, fréquence) ; l'item
 `rubble` (`waste: true`) dans `data/items.js`.
+
+## Fenêtres toujours à l'écran
+
+Fiches, menus, arbre de recherche, inventaire et infobulles restent entiers à l'écran,
+quelle que soit la taille de la fenêtre ou de l'interface. Une fiche trop haute pour la
+place qu'il y a se raccourcit et ses sections défilent ; les fenêtres font de même. Les
+barres de défilement ont le look du jeu (rail sombre, curseur orange en relief).
 
 ## Palette d'outils
 

@@ -6,7 +6,7 @@ import { DOWN, LEFT, RIGHT } from '../../core/grid.js';
 import { hash2 } from '../../core/random.js';
 import { PALETTE as P } from '../../data/palette.js';
 import { outputCell } from '../../world/buildings.js';
-import { pressPistonOffset } from '../../sim/machines.js';
+import { dumpCapacity, dumpFill, pressPistonOffset } from '../../sim/machines.js';
 import { currentCtx, disc, makeCanvas, rect, withAlpha } from '../pen.js';
 
 // ---------- Sprites fixes ----------
@@ -73,7 +73,6 @@ const STATIC_SPRITES = {
     hazardStripes(1, 12, 14, 3);
     rect(3, 3, 10, 8, P.black);
     rect(4, 4, 8, 6, P.night);
-    for (const [x, y] of [[5, 8], [8, 7], [10, 8], [6, 6]]) rect(x, y, 2, 1, P.bark);
     for (let x = 4; x < 12; x += 2) rect(x, 4, 1, 6, P.slate);
     rect(1, 15, 14, 1, P.soot);
   }),
@@ -247,6 +246,11 @@ export function animationState(b, time) {
     case 'assembler':
       // Le bras va et vient au-dessus du petit tapis pendant le travail.
       return { lit: b.working ? 1 : 0, arm: b.working ? Math.round((Math.sin(b.anim * 3) + 1) * 7) : 7 };
+    case 'dump': {
+      // Les débris montent dans la fosse (0 à 6 rangées) ; pleine, un voyant rouge clignote.
+      const ratio = dumpFill(b) / dumpCapacity(b);
+      return { pile: Math.min(6, Math.ceil(ratio * 6)), alarm: ratio >= 1 ? Math.floor(time * 3) % 2 : 0 };
+    }
     case 'hub':
       return {
         flag: Math.floor(((time * FLAG_SPEED) / (Math.PI * 2)) * FLAG_FRAMES) % FLAG_FRAMES,
@@ -258,6 +262,20 @@ export function animationState(b, time) {
 }
 
 const ANIMATE = {
+  dump({ pile, alarm }, sx, sy) {
+    // Tas de débris, du fond de la fosse vers le haut, puis la grille par-dessus.
+    for (let r = 0; r < pile; r++) {
+      const y = sy + 9 - r;
+      rect(sx + 4, y, 8, 1, r % 2 ? P.clay : P.bark);
+      rect(sx + 5 + ((r * 3) % 6), y, 1, 1, P.soot);
+    }
+    if (pile) for (let x = 4; x < 12; x += 2) rect(sx + x, sy + 10 - pile, 1, pile, P.slate);
+    if (alarm) {
+      rect(sx + 12, sy + 1, 3, 3, P.black);
+      rect(sx + 13, sy + 2, 1, 1, P.red);
+    }
+  },
+
   drill({ blade }, sx, sy) {
     // Trois lames qui tournent dans le puits
     const base = (blade / BLADE_FRAMES) * BLADE_PERIOD;

@@ -14,6 +14,8 @@ const card = document.getElementById('levelCard');
 
 export function initLevelCard() {
   card.addEventListener('pointerdown', (e) => e.stopPropagation());
+  // Comme la fiche d'un bâtiment : un clic n'importe où ailleurs la referme.
+  addEventListener('pointerdown', (e) => { if (!card.hidden && !card.contains(e.target)) closeLevelCard(); }, true);
   card.addEventListener('click', (e) => { if (e.target.closest('[data-close]')) closeLevelCard(); });
   on('level:complete', ({ level }) => {
     if (ui.screen === 'title') return; // l'usine de démonstration du menu ne fête rien

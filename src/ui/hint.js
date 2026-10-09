@@ -15,6 +15,7 @@ import { mergeProblem } from '../sim/belt.js';
 import { activeRecipes, ingredientsOf, yieldOf } from '../data/recipes.js';
 import { ITEMS } from '../data/items.js';
 import { refusal } from '../render/scene.js';
+import { dumpCapacity, dumpFill } from '../sim/machines.js';
 
 const hintEl = document.getElementById('hint');
 let shown = '';
@@ -77,6 +78,7 @@ export function refusalText({ item, target }) {
   const params = { machine: buildingName(target.type), item: itemName(item), items: itemPlural(item) };
   if (ITEMS[item]?.waste) return t('refused.waste', params);
   if (target.kind === 'crafter') return t('refused.recipe', params);
+  if (target.kind === 'dump') return t('refused.dumpFull', params);
   if (target.kind === 'hub') {
     const wanted = (currentLevel()?.goals ?? []).map((goal) => itemPlural(goal.item)).join(', ');
     return t('refused.hub', { ...params, wanted });
@@ -86,7 +88,7 @@ export function refusalText({ item, target }) {
 
 /** Ex. « Four · 1,3 s par item · Minerai de fer → Lingot de fer · 62 % » (selon la langue). */
 function machineHint(b) {
-  if (b?.kind === 'dump') return t('hint.dump', { name: buildingName(b.type), n: b.destroyed });
+  if (b?.kind === 'dump') return t('hint.dump', { name: buildingName(b.type), n: dumpFill(b), total: dumpCapacity(b) });
   if (b?.kind === 'storage') {
     return t('hint.storage', { name: buildingName(b.type), n: b.slots.filter(Boolean).length, total: b.slots.length });
   }

@@ -18,7 +18,7 @@ import { buildingName, decimal, itemName, itemPlural, shapeLabel, t } from '../i
 import { isConveyor } from '../sim/transfer.js';
 import { game, ui, view } from '../state.js';
 import { flowSummary } from '../sim/flow.js';
-import { productionRate } from '../sim/machines.js';
+import { dumpCapacity, dumpFill, dumpFull, productionRate } from '../sim/machines.js';
 import { makeCanvas } from '../render/pen.js';
 import { issue } from '../sim/commands.js';
 import { placeScaled, screenSize, uiScale } from './uiScale.js';
@@ -40,6 +40,16 @@ let shownFor = null;
 let parts = null;
 
 export function initInfoPanel() {
+  // Un appui n'importe où ferme les infobulles ; ailleurs que dans la fiche, il ferme aussi
+  // la fiche. Sur la carte, c'est le clic lui-même qui décide (ouvrir la fiche d'un autre
+  // bâtiment, ou fermer) : voir input/controls.js.
+  addEventListener('pointerdown', (e) => {
+    tooltip.hidden = true;
+    hideTooltip();
+    if (!ui.selected || panel.contains(e.target) || e.target.id === 'game') return;
+    ui.selected = null;
+  }, true);
+
   // Boutons des priorités (▲) et des filtres (icônes d'items) : un seul écouteur pour
   // toute la fiche, car son contenu est redessiné. On réagit dès l'appui : les débits
   // changent sans cesse et le bouton peut être redessiné avant le relâchement.
@@ -52,6 +62,7 @@ export function initInfoPanel() {
     if (slot && b?.slots) issue({ type: 'takeSlot', id: b.id, slot: Number(slot.dataset.takeSlot) });
     if (e.target.closest('[data-enter]') && b?.kind === 'factory') return enterFactory(b);
     if (e.target.closest('[data-clear]') && b?.item) issue({ type: 'clearItem', id: b.id });
+    if (e.target.closest('[data-empty]') && b?.kind === 'dump') issue({ type: 'emptyDump', id: b.id });
     if (e.target.closest('[data-power]') && b) issue({ type: 'setEnabled', ids: [b.id], enabled: !isOn(b) });
     const recipe = e.target.closest('[data-recipe]');
     if (recipe && b?.kind === 'crafter') {
@@ -136,9 +147,13 @@ export function updateInfoPanel() {
     return;
   }
   const info = describe(b);
+  // La fiche est redessinée à chaque image (et remesurée pour tenir à l'écran) : ça
+  // remettrait son défilement en haut. On garde où le joueur l'avait fait défiler.
+  const scroll = shownFor === b ? parts.sections.scrollTop : 0;
   if (shownFor !== b) build(b);
   fill(info);
   place(b);
+  parts.sections.scrollTop = scroll;
   // Le réglage vient de changer (la commande est appliquée un pas plus tard) : on suit.
   if (!tooltip.hidden) renderChipTooltip();
 }
@@ -218,12 +233,20 @@ function describeFactory(b) {
   };
 }
 
-/** Décharge : ce qu'elle a jeté depuis sa pose. */
+/** Décharge : ses débris (jauge), un bouton pour la vider, et ce qu'elle a jeté depuis sa pose. */
 function describeDump(b) {
+  const fill = dumpFill(b), capacity = dumpCapacity(b);
+  const full = dumpFull(b);
+  let status = { label: t('panel.dump.status'), tone: b.flash > 0 ? 'ok' : 'idle' };
+  if (full) status = { label: t('panel.dump.full'), tone: 'warn' };
+  else if (fill >= capacity * 0.8) status = { label: t('panel.dump.almost'), tone: 'warn' };
   return {
     title: buildingName(b.type),
-    status: { label: t('panel.dump.status'), tone: b.flash > 0 ? 'ok' : 'idle' },
+    status,
     sections: [
+      { label: t('panel.dump.fill'), aside: `${fill} / ${capacity}`, html: `
+        ${gauge(fill / capacity)}
+        <button type="button" class="ip-take" data-empty${fill ? '' : ' disabled'}>${t('panel.dump.empty')}</button>` },
       { label: t('panel.dump.destroyed'), aside: t('panel.dump.aside'), html: `<div class="ip-row">${b.destroyed}</div>` },
     ],
   };
@@ -517,7 +540,18 @@ function fill(info) {
     </div>`).join(''));
 }
 
-/** Place la fiche au-dessus du bâtiment (ou en dessous s'il n'y a pas la place). */
+/** Le bas de la zone libre de l'écran : au-dessus de la palette d'outils. */
+function screenBottom() {
+  const bar = document.getElementById('bar');
+  const top = bar && !bar.hidden ? bar.getBoundingClientRect().top : innerHeight;
+  return Math.min(innerHeight, top) - 8;
+}
+
+/**
+ * Place la fiche au-dessus du bâtiment, ou en dessous s'il y a plus de place. Elle reste
+ * toujours entière à l'écran : trop haute pour la place qu'il y a, elle se raccourcit et
+ * ses sections défilent (barre de défilement du jeu).
+ */
 function place(b) {
   const z = view.zoom;
   const centerX = (b.x * TILE + (b.w * TILE) / 2 - view.camX) * z;
@@ -528,10 +562,22 @@ function place(b) {
   panel.hidden = offscreen;
   if (offscreen) return;
 
+  panel.style.maxHeight = ''; // mesurer sa hauteur entière
   const { w, h } = screenSize(panel);
-  const below = top - h - GAP < 8;
+  const limit = screenBottom();
+  const roomAbove = top - GAP - 8;
+  const roomBelow = limit - bottom - GAP;
+  const below = h > roomAbove && roomBelow > roomAbove;
+  const shown = Math.min(h, Math.max(140, below ? roomBelow : roomAbove), limit - 8);
+  if (shown < h) {
+    // max-height compte sans les marges ni la bordure de la fiche : on les retire.
+    const cs = getComputedStyle(panel);
+    const frame = ['paddingTop', 'paddingBottom', 'borderTopWidth', 'borderBottomWidth'].reduce((n, k) => n + parseFloat(cs[k]), 0);
+    panel.style.maxHeight = `${shown / uiScale() - frame}px`;
+  }
+  const y = Math.max(8, Math.min(limit - shown, below ? bottom + GAP : top - shown - GAP));
   const left = Math.max(8, Math.min(innerWidth - w - 8, centerX - w / 2));
-  placeScaled(panel, left, below ? bottom + GAP : top - h - GAP);
+  placeScaled(panel, left, y);
   panel.classList.toggle('below', below);
   panel.style.setProperty('--arrow-x', `${Math.max(16, Math.min(w - 16, centerX - left)) / uiScale()}px`);
 }

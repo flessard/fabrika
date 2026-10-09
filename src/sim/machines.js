@@ -38,6 +38,7 @@ export function insertIntoMachine(machine, itemType) {
     return true;
   }
   if (machine.kind === 'dump') {
+    if (dumpFull(machine)) return false;
     destroy(machine, itemType);
     return true;
   }
@@ -60,21 +61,28 @@ export function insertIntoMachine(machine, itemType) {
 export function machineRefuses(machine, itemType) {
   if (machine.kind === 'hub') return !hubWants(itemType);
   if (machine.kind === 'crafter') return !recipeUsing(machine, itemType);
+  if (machine.kind === 'dump') return dumpFull(machine); // pleine : rien n'entre avant la vidange
   return machine.kind === 'drill';
 }
 
 export function machineCouldAccept(machine, itemType) {
   if (machine.kind === 'hub') return hubWants(itemType);
-  if (machine.kind === 'dump') return true;
+  if (machine.kind === 'dump') return !dumpFull(machine);
   if (machine.kind === 'storage') return storageCouldAccept(machine, itemType);
   if (machine.kind !== 'crafter') return false;
   if (!recipeUsing(machine, itemType)) return false;
   return machine.inputs.filter((t) => t === itemType).length < BUILDINGS[machine.type].storage.input;
 }
 
-/** La décharge détruit l'item : un peu de poussière, et c'est tout. */
+/** Débris accumulés dans une décharge, et sa capacité. */
+export const dumpFill = (dump) => dump.stored ?? 0;
+export const dumpCapacity = (dump) => BUILDINGS[dump.type].capacity ?? Infinity;
+export const dumpFull = (dump) => dumpFill(dump) >= dumpCapacity(dump);
+
+/** La décharge détruit l'item : il s'ajoute à ses débris, avec un peu de poussière. */
 function destroy(dump, itemType) {
   dump.destroyed++;
+  dump.stored = dumpFill(dump) + 1;
   dump.flash = 0.25;
   spawnDust(dump.x * TILE + 4 + Math.random() * 8, dump.y * TILE + 6);
 }

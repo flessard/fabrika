@@ -33,6 +33,7 @@
   <div id="pause" hidden>
     <div class="pause-card panel">
       <div class="pause-head"><b data-i18n="pause.title"></b><span id="seedLbl"></span></div>
+      <div class="win-body">
 
       <div id="pauseMain" class="pause-page">
         <button id="pResume" type="button" class="title-btn primary"><span data-i18n="pause.resume"></span></button>
@@ -83,6 +84,7 @@
         <div class="help" data-i18n-html="hud.help"></div>
         <button id="pBack" type="button" class="title-btn"><span data-i18n="title.back"></span></button>
       </div>
+      </div>
     </div>
   </div>
 
@@ -100,9 +102,11 @@
   <div id="inventoryWindow" hidden>
     <div class="inv-card panel">
       <div class="pause-head"><b data-i18n="inventory.title"></b><button id="invClose" type="button" class="rs-close" data-i18n-aria="research.close">×</button></div>
-      <p class="rs-intro" data-i18n="inventory.intro"></p>
-      <div id="invSlots"></div>
-      <div id="invCosts" class="inv-costs"></div>
+      <div class="win-body">
+        <p class="rs-intro" data-i18n="inventory.intro"></p>
+        <div id="invSlots"></div>
+        <div id="invCosts" class="inv-costs"></div>
+      </div>
     </div>
   </div>
 
@@ -110,9 +114,11 @@
   <div id="research" hidden>
     <div class="rs-card panel">
       <div class="pause-head"><b data-i18n="research.title"></b><button id="rsClose" type="button" class="rs-close" data-i18n-aria="research.close">×</button></div>
-      <p class="rs-intro" data-i18n="research.intro"></p>
-      <div id="rsBank" class="rs-bank"></div>
-      <div id="rsTree" class="rs-tree"></div>
+      <div class="win-body">
+        <p class="rs-intro" data-i18n="research.intro"></p>
+        <div id="rsBank" class="rs-bank"></div>
+        <div id="rsTree" class="rs-tree"></div>
+      </div>
     </div>
   </div>
 

@@ -11,7 +11,7 @@ import { playSound } from '../audio/sounds.js';
 const SOUND = {
   place: 'place', placeBelts: 'place', placeGroup: 'place', moveGroup: 'place',
   erase: 'remove', eraseGroup: 'remove',
-  rotate: 'click', setShape: 'click', setPriority: 'click', toggleFilter: 'click', takeOutput: 'place', clearItem: 'remove', research: 'goal', setStorageOutput: 'click', setEnabled: 'click', setRecipe: 'click',
+  rotate: 'click', setShape: 'click', setPriority: 'click', toggleFilter: 'click', takeOutput: 'place', clearItem: 'remove', emptyDump: 'remove', research: 'goal', setStorageOutput: 'click', setEnabled: 'click', setRecipe: 'click',
 };
 /** Commandes dont le refus mérite d'être signalé (effacer une case vide ne dit rien). */
 const SAYS_NO = new Set(['place', 'placeBelts', 'placeGroup', 'moveGroup', 'rotate', 'setShape', 'setStorageOutput']);

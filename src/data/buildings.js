@@ -73,7 +73,9 @@ export const BUILDINGS = {
   // Garde des items : 6 emplacements, chacun d'une seule sorte jusqu'à la taille de son paquet.
   container: { kind: 'storage', w: 2, h: 2, slots: 6, cost: { fe_plate: 6 } },
   // Décharge : détruit tout ce qu'elle reçoit, par n'importe quel côté.
-  dump:     { kind: 'dump',     w: 1, h: 1, cost: { fe_plate: 2 } },
+  // Décharge : ce qu'elle détruit s'y accumule (capacity items) ; pleine, elle refuse tout
+  // jusqu'à ce qu'on la vide (bouton de sa fiche).
+  dump:     { kind: 'dump',     w: 1, h: 1, cost: { fe_plate: 2 }, capacity: 250 },
   // Usine : 4 × 4 sur la carte, 32 × 32 à l'intérieur. Ses 16 portes sont posées avec elle.
   factory:  { kind: 'factory',  w: 4, h: 4, cost: { fe_plate: 40, cu_wire: 20 } },
   door:     { kind: 'door',     w: 1, h: 1 },

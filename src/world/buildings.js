@@ -151,6 +151,7 @@ function createBuilding(type, x, y, dir, id = game.nextId++) {
       break;
     case 'dump':
       b.destroyed = 0;        // items jetés depuis la pose
+      b.stored = 0;           // débris accumulés depuis la dernière vidange (voir capacity)
       b.flash = 0;
       break;
     case 'storage':
